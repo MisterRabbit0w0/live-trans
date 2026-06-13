@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 测试产物（脚本运行时生成的录音）
+scripts/*.wav
+
+# 本地配置与日志（含 API Key，位于 %APPDATA%，此处兜底）
+config.json
+*.log
+
+# 模型缓存
+.cache/
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# 桌面快捷方式
+*.lnk
