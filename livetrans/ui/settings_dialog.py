@@ -1,7 +1,7 @@
 """设置面板：ASR/翻译后端、语言、字幕样式。"""
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtWidgets import (
     QCheckBox,

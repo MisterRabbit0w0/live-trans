@@ -1,7 +1,7 @@
 """系统托盘：开始/暂停、显示/隐藏字幕、设置、退出。"""
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap

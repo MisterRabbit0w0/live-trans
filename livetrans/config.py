@@ -75,7 +75,7 @@ class AppConfig:
         )
 
     @classmethod
-    def load(cls, path: Path | None = None) -> "AppConfig":
+    def load(cls, path: Path | None = None) -> AppConfig:
         p = path or config_path()
         if not p.exists():
             return cls()
@@ -84,11 +84,7 @@ class AppConfig:
         except (json.JSONDecodeError, OSError):
             return cls()
         cfg = cls()
-        for section_name, section_cls in (
-            ("asr", AsrConfig),
-            ("translate", TranslateConfig),
-            ("subtitle", SubtitleStyle),
-        ):
+        for section_name in ("asr", "translate", "subtitle"):
             section_data = data.get(section_name)
             if isinstance(section_data, dict):
                 section = getattr(cfg, section_name)

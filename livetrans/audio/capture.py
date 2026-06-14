@@ -6,7 +6,7 @@ loopback 设备捕获，无需虚拟声卡。
 from __future__ import annotations
 
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import pyaudiowpatch as pyaudio
