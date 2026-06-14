@@ -41,7 +41,10 @@ class CloudWhisper(AsrEngine):
         )
         resp.raise_for_status()
         body = resp.json()
-        return AsrResult(language=body.get("language", language or ""), text=(body.get("text") or "").strip())
+        return AsrResult(
+            language=body.get("language", language or ""),
+            text=(body.get("text") or "").strip(),
+        )
 
     def close(self) -> None:
         self._client.close()

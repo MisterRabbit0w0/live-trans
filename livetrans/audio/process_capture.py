@@ -11,8 +11,8 @@ from __future__ import annotations
 import ctypes
 import logging
 import threading
+from collections.abc import Callable
 from ctypes import POINTER, Structure, Union, byref, wintypes
-from typing import Callable
 
 import comtypes
 import numpy as np
