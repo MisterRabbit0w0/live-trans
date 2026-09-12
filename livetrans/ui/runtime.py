@@ -43,7 +43,8 @@ class RuntimeCoordinator(QObject):
     def _start(self, generation, cancel, cfg, paused):
         try:
             if not self._stop_current():
-                raise RuntimeError("上一会话仍在停止，请稍后重试")
+                self.event.emit(generation, {"kind": "failed", "reason": "shutdown_pending"})
+                return
             if cancel.is_set():
                 return
             self._pipeline = self._factory(cfg, lambda e: self.event.emit(generation, e), cancel)
@@ -59,7 +60,8 @@ class RuntimeCoordinator(QObject):
     def _stop(self, generation):
         try:
             if not self._stop_current():
-                raise RuntimeError("当前会话仍在停止，请稍后重试")
+                self.event.emit(generation, {"kind": "failed", "reason": "shutdown_pending"})
+                return
         except Exception as error:
             self.event.emit(generation, {"kind": "failed", "error": type(error).__name__})
         else:

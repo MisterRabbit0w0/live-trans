@@ -40,7 +40,7 @@ ColumnLayout {
         ToggleSetting { path: "subtitle.show_original"; label: "显示原文"; hint: "同时显示原文和译文。" }
         NumberSetting { path: "subtitle.font_size"; label: "字幕字号"; minimum: 10; maximum: 48; suffix: "px" }
         NumberSetting { path: "subtitle.max_lines"; label: "同屏条数"; minimum: 1; maximum: 10; suffix: "条" }
-        NumberSetting { path: "subtitle.opacity"; label: "背景不透明度"; minimum: 0; maximum: 100; step: 5; factor: 100; suffix: "%" }
+        NumberSetting { path: "subtitle.opacity"; label: "背景不透明度"; minimum: 0; maximum: 100; step: 5; factor: 100; decimals: 2; suffix: "%" }
         NumberSetting { path: "subtitle.width"; label: "悬浮窗宽度"; minimum: 300; maximum: 2400; step: 10; suffix: "px" }
     }
     AppText { text: "拖动悬浮窗可调整位置，Ctrl + 滚轮可直接调整字号。"; color: Theme.muted; font.pixelSize: 12; Layout.fillWidth: true }

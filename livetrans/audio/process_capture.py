@@ -283,7 +283,12 @@ class ProcessLoopbackCapture:
 
     def start(self) -> None:
         if self._thread is not None:
-            return
+            if self._thread.is_alive():
+                if self._stop_event.is_set() or self._init_error is not None:
+                    raise RuntimeError("上一次音频捕获仍在清理，请稍后重试")
+                return
+            self._thread.join()
+            self._thread = None
         self._stop_event.clear()
         self._init_done.clear()
         self._init_error = None
@@ -292,10 +297,14 @@ class ProcessLoopbackCapture:
         )
         self._thread.start()
         if not self._init_done.wait(timeout=10):
-            self._stop_event.set()
+            self.stop()
             raise RuntimeError("按进程音频捕获初始化超时")
         if self._init_error is not None:
-            raise self._init_error
+            error = self._init_error
+            # _init_done is signalled before the worker's finally block completes.
+            # Keep its handle if native cleanup times out; start() must not reuse it.
+            self.stop()
+            raise error
 
     def stop(self, timeout: float = 3.0) -> bool:
         self._stop_event.set()
@@ -318,11 +327,15 @@ class ProcessLoopbackCapture:
         client = None
         try:
             client, fmt = self._activate_and_init()
+            if self._stop_event.is_set():
+                return
             capture = client.GetService(byref(IAudioCaptureClient._iid_)).QueryInterface(
                 IAudioCaptureClient
             )
             event_handle = _kernel32.CreateEventW(None, False, False, None)
             client.SetEventHandle(event_handle)
+            if self._stop_event.is_set():
+                return
             client.Start()
             self._init_done.set()
             self._capture_loop(capture, fmt, event_handle)
@@ -331,6 +344,7 @@ class ProcessLoopbackCapture:
             self._init_error = e if isinstance(e, RuntimeError) else RuntimeError(str(e))
             self._init_done.set()
         finally:
+            self._init_done.set()
             if client is not None:
                 try:
                     client.Stop()
@@ -405,7 +419,7 @@ class ProcessLoopbackCapture:
         block_align = channels * bits // 8
         while not self._stop_event.is_set():
             _kernel32.WaitForSingleObject(event_handle, 100)
-            while True:
+            while not self._stop_event.is_set():
                 packet = capture.GetNextPacketSize()
                 if packet == 0:
                     break
@@ -431,7 +445,7 @@ class ProcessLoopbackCapture:
                             buf = np.interp(x_new, x_old, buf).astype(np.float32)
                         else:
                             buf = np.empty(0, dtype=np.float32)
-                    if len(buf):
+                    if len(buf) and not self._stop_event.is_set():
                         self._on_chunk(buf)
                 finally:
                     capture.ReleaseBuffer(frames)

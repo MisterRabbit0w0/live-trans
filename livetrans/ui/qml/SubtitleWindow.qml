@@ -6,7 +6,7 @@ Window {
     id: root
     objectName: "subtitleWindow"
     title: "LiveTrans 字幕"
-    flags: Qt.Tool | Qt.WindowStaysOnTopHint
+    flags: Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
            | (subtitleControls.nativeFrame ? Qt.CustomizeWindowHint : Qt.FramelessWindowHint)
     color: "transparent"
     visible: appController.subtitleVisible

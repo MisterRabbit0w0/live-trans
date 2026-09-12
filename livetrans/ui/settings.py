@@ -3,21 +3,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import asdict
+from math import isfinite
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from ..config import AppConfig
-
-TARGET_LANGUAGES = (
-    ("中文（简体）", "中文"), ("中文（繁体）", "繁体中文"),
-    ("英语", "英语"), ("日语", "日语"), ("韩语", "韩语"),
-    ("法语", "法语"), ("德语", "德语"), ("西班牙语", "西班牙语"),
-    ("葡萄牙语", "葡萄牙语"), ("俄语", "俄语"), ("意大利语", "意大利语"),
-    ("阿拉伯语", "阿拉伯语"), ("印地语", "印地语"), ("泰语", "泰语"),
-    ("越南语", "越南语"), ("印度尼西亚语", "印度尼西亚语"),
-    ("土耳其语", "土耳其语"), ("荷兰语", "荷兰语"), ("波兰语", "波兰语"),
-)
+from ..languages import TARGET_LANGUAGES
 
 
 def validate_config(cfg: AppConfig) -> dict[str, str]:
@@ -97,6 +89,7 @@ class SettingsStore(QObject):
         self._saved = asdict(cfg)
         self._draft = deepcopy(self._saved)
         self._errors: dict[str, str] = {}
+        self._input_errors: dict[str, str] = {}
 
     @Property("QVariantMap", notify=changed)
     def draft(self):
@@ -108,11 +101,11 @@ class SettingsStore(QObject):
 
     @Property(bool, notify=changed)
     def dirty(self):
-        return self._draft != self._saved
+        return self._draft != self._saved or bool(self._input_errors)
 
     @Property("QVariantList", notify=changed)
     def targetLanguages(self):
-        choices = [{"label": label, "value": value} for label, value in TARGET_LANGUAGES]
+        choices = [{"label": label, "value": value} for label, value, _ in TARGET_LANGUAGES]
         # Existing JSON can contain any natural-language name. Keep it selectable
         # without silently normalizing it or dropping it when another page edits.
         for data in (self._saved, self._draft):
@@ -133,18 +126,28 @@ class SettingsStore(QObject):
         if key not in obj or isinstance(obj[key], dict):
             return
         try:
+            if type(obj[key]) in (int, float):
+                number = float(value)
+                if not isfinite(number) or (type(obj[key]) is int and not number.is_integer()):
+                    raise ValueError
             value = type(obj[key])(value)
         except (TypeError, ValueError, OverflowError):
+            message = "请输入整数" if type(obj[key]) is int else "请输入有效数值"
+            self._input_errors[path] = self._errors[path] = message
+            self.changed.emit()
             return
-        if obj[key] != value:
+        had_error = path in self._errors
+        self._input_errors.pop(path, None)
+        self._errors.pop(path, None)
+        if obj[key] != value or had_error:
             obj[key] = value
-            self._errors.pop(path, None)
             self.changed.emit()
 
     @Slot()
     def discard(self):
         self._draft = deepcopy(self._saved)
         self._errors = {}
+        self._input_errors = {}
         self.changed.emit()
 
     def candidate(self) -> AppConfig | None:
@@ -154,7 +157,7 @@ class SettingsStore(QObject):
                 if isinstance(value, str):
                     section[key] = value.strip()
         cfg = AppConfig.from_dict(data)
-        self._errors = validate_config(cfg)
+        self._errors = validate_config(cfg) | self._input_errors
         self.changed.emit()
         return None if self._errors else cfg
 
@@ -167,6 +170,8 @@ class SettingsStore(QObject):
         previous_saved = self._saved["subtitle"]["font_size"]
         self._saved["subtitle"]["font_size"] = size
         self._draft["subtitle"]["font_size"] = size
+        self._input_errors.pop("subtitle.font_size", None)
+        self._errors.pop("subtitle.font_size", None)
         self.changed.emit()
         return previous_saved
 
