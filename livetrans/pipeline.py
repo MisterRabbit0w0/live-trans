@@ -95,12 +95,15 @@ class Pipeline:
         self._vad_factory = vad_factory
         self._stop_lock = threading.Lock()
         self._cleanup_pending = False
+        self._stopped = threading.Event()
+        self._stopped.set()
 
     def _emit(self, kind, **data):
         if not self._cancel.is_set():
             self._emit_callback(dict(kind=kind, **data))
 
     def start(self, paused=False):
+        self._stopped.clear()
         self._paused = paused
         stage = "asr"
         try:
@@ -149,7 +152,7 @@ class Pipeline:
     def stop(self):
         with self._stop_lock:
             if self._cleanup_pending:
-                return
+                return False
             self._cancel.set()
             capture = self._capture
             self._capture = None
@@ -178,8 +181,10 @@ class Pipeline:
                     name="livetrans-stop-cleanup",
                     daemon=True,
                 ).start()
-                return
+                return False
             self._close_resources()
+            self._stopped.set()
+            return True
 
     def _stop_capture(self, capture):
         """Stop capture without letting a stalled native API block the coordinator."""
@@ -203,6 +208,7 @@ class Pipeline:
         self._close_resources()
         with self._stop_lock:
             self._cleanup_pending = False
+            self._stopped.set()
 
     def _close_resources(self):
         # This is called only after workers are done, so shared clients are safe to close.

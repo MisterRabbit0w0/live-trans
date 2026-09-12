@@ -205,7 +205,7 @@ Window {
             spacing: 10
             Icon { name: preferences.dirty ? "settings" : "check"; color: preferences.dirty ? Theme.accent : Theme.muted; Layout.leftMargin: 4; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
             AppText { text: preferences.dirty ? "有未应用的修改" : "设置已同步"; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true }
-            ActionButton { text: "还原修改"; enabled: preferences.dirty && !appController.busy; quiet: true; onClicked: preferences.discard() }
+            ActionButton { text: "还原修改"; enabled: preferences.dirty && !appController.busy; quiet: true; onClicked: appController.discardSettings() }
             ActionButton { objectName: "applySettings"; text: "应用设置"; primary: true; enabled: preferences.dirty && !appController.busy; onClicked: appController.applySettings() }
         }
     }
