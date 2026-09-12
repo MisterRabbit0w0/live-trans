@@ -18,7 +18,7 @@ dependencies = [
     "numpy",
     "PyAudioWPatch>=0.2.12.7",
     "faster-whisper>=1.1.0",
-    "PySide6>=6.7",
+    "PySide6>=6.8",
     "httpx>=0.27",
     "onnxruntime>=1.18",
     "pycaw>=20230407",
@@ -45,7 +45,7 @@ build-backend = "setuptools.build_meta"
 include = ["livetrans*"]
 
 [tool.setuptools.package-data]
-livetrans = ["assets/*.onnx"]
+livetrans = ["assets/*.onnx", "assets/*.svg", "ui/qml/*.qml", "ui/qml/qmldir"]
 
 [tool.ruff]
 target-version = "py310"
