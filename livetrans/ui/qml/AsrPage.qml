@@ -35,7 +35,7 @@ ColumnLayout {
             options: [{label: "自动", value: "auto"}, {label: "NVIDIA GPU · CUDA", value: "cuda"}, {label: "CPU", value: "cpu"}]
         }
         NumberSetting { path: "vad_silence_ms"; label: "切句停顿"; minimum: 250; maximum: 1000; step: 50; suffix: "ms"; hint: "数值越小，字幕出现越快，句子也可能更碎。" }
-        NumberSetting { path: "vad_max_segment_s"; label: "最长句子"; minimum: 1; maximum: 30; step: 0.5; suffix: "秒" }
+        NumberSetting { path: "vad_max_segment_s"; label: "最长句子"; minimum: 1; maximum: 30; step: 0.5; decimals: 2; suffix: "秒" }
         NumberSetting { path: "vad_min_speech_ms"; label: "最短语音"; minimum: 50; maximum: 1000; step: 50; suffix: "ms"; hint: "短于此长度的语音片段将被忽略。" }
     }
 }

@@ -1,7 +1,7 @@
 """Isolated UI preview/visual checks; never captures audio or calls a real service.
 
 Run: python scripts/preview_ui.py --capture .cache/ui --theme light --scale 1.5
-Omit --capture to interact with a preview backed by simulated subtitle events.
+Omit --capture to start an interactive preview with simulated subtitles automatically.
 """
 from __future__ import annotations
 
@@ -60,6 +60,8 @@ def main():
     cfg = AppConfig()
     cfg.ui.theme = args.theme
     cfg.ui.reduce_transparency = args.opaque
+    # Only the temporary preview configuration starts automatically.
+    cfg.ui.auto_translate = not bool(args.capture)
     with tempfile.TemporaryDirectory(prefix="livetrans-preview-") as directory:
         app = App(cfg, Path(directory) / "config.json", RuntimeCoordinator(PreviewPipeline))
         app.main_window.setTitle("LiveTrans · 界面预览（模拟数据）")

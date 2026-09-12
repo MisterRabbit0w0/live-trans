@@ -11,6 +11,7 @@ ColumnLayout {
     property real maximum: 100
     property real step: 1
     property real factor: 1
+    property int decimals: 0
     spacing: 7
     Layout.fillWidth: true
     AppText { text: root.label; font.weight: Font.Medium; Layout.fillWidth: true }
@@ -53,7 +54,11 @@ ColumnLayout {
             font.pixelSize: 13
             selectByMouse: true
             Accessible.name: root.label
-            validator: DoubleValidator { bottom: root.minimum; top: root.maximum; locale: "C" }
+            validator: DoubleValidator {
+                bottom: root.minimum; top: root.maximum; locale: "C"
+                decimals: root.decimals
+                notation: DoubleValidator.StandardNotation
+            }
             onTextEdited: {
                 if (acceptableInput) preferences.setValue(root.path, Number(text) / root.factor);
             }

@@ -286,7 +286,11 @@ class AppController(QObject):
             self._state = "error"
             self._quitting = False
             prefix = "设置已保存，启动失败。" if self._restarting else "操作未完成。"
-            self._notice = prefix + "请检查声音来源、模型或服务配置，然后重试。"
+            self._notice = prefix + (
+                "上一会话仍在停止，尚未启动新会话。请稍后重试。"
+                if event.get("reason") == "shutdown_pending"
+                else "请检查声音来源、模型或服务配置，然后重试。"
+            )
             self._error = True
             self._restarting = False
             self.notification.emit(self._notice)

@@ -11,13 +11,16 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import numpy as np
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import QApplication
 
 from livetrans.asr.base import AsrResult
 from livetrans.config import AppConfig
+from livetrans.languages import target_lang_code
 from livetrans.pipeline import Pipeline
+from livetrans.translate.openai_compat import OpenAICompatTranslator
 from livetrans.ui.controller import AppController
 from livetrans.ui.runtime import RuntimeCoordinator
 from livetrans.ui.settings import SettingsStore, engine_config, validate_config
@@ -152,6 +155,14 @@ class DraftTests(unittest.TestCase):
         self.assertEqual(store.draft["translate"]["base_url"], "wrong")
         store.setValue("translate.base_url", "http://localhost:11434/v1")
         self.assertNotIn("translate.base_url", store.errors)
+
+    def test_integer_setting_rejects_fractional_input(self):
+        store = SettingsStore(AppConfig())
+        store.setValue("subtitle.font_size", 22.5)
+        self.assertEqual(store.draft["subtitle"]["font_size"], 22)
+        self.assertTrue(store.dirty)
+        self.assertIn("subtitle.font_size", store.errors)
+        self.assertIsNone(store.candidate())
 
     def test_shortcut_updates_font_without_discarding_other_drafts(self):
         store = SettingsStore(AppConfig())
@@ -333,7 +344,71 @@ class SubtitleTests(unittest.TestCase):
         self.assertEqual(len(changed), 1)
 
 
+class TranslationTests(unittest.TestCase):
+    def test_concurrent_unsupported_thinking_option_retries_per_request(self):
+        first_options_seen = threading.Barrier(2)
+        retry_done = threading.Event()
+
+        class Client:
+            def post(self, url, json):
+                if "enable_thinking" in json:
+                    first_options_seen.wait(2)
+                    if threading.current_thread().name == "second":
+                        retry_done.wait(2)
+                    return httpx.Response(400, request=httpx.Request("POST", url))
+                retry_done.set()
+                return httpx.Response(
+                    200, json={"choices": [{"message": {"content": "ok"}}]},
+                    request=httpx.Request("POST", url),
+                )
+
+        translator = OpenAICompatTranslator("https://example.invalid/v1", "", "fake")
+        translator._client.close()
+        translator._client = Client()
+        results = {}
+
+        def translate():
+            try:
+                results[threading.current_thread().name] = translator.translate("hello")
+            except Exception as error:
+                results[threading.current_thread().name] = type(error).__name__
+
+        threads = [threading.Thread(target=translate, name=name) for name in ("first", "second")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(3)
+        self.assertEqual(results, {"first": "ok", "second": "ok"})
+
+
 class LifecycleTests(unittest.TestCase):
+    def test_target_languages_have_exact_codes(self):
+        for value in ("中文", "繁体中文", "英语", "葡萄牙语", "印地语", "印度尼西亚语", "波兰语"):
+            self.assertTrue(target_lang_code(value), value)
+
+    def test_capture_stop_failure_blocks_until_capture_finishes(self):
+        class Capture:
+            def __init__(self):
+                self.allow_stop = threading.Event()
+
+            def stop(self):
+                return self.allow_stop.is_set()
+
+        capture = Capture()
+        pipeline = Pipeline(AppConfig(), lambda event: None)
+        pipeline._capture = capture
+        pipeline._session_started = True
+        pipeline._STOP_TIMEOUT = 0.05
+        self.assertFalse(pipeline.stop())
+        self.assertIs(pipeline._capture, capture)
+        with self.assertRaises(RuntimeError):
+            pipeline.start()
+        capture.allow_stop.set()
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline and not pipeline.stop():
+            time.sleep(0.01)
+        self.assertTrue(pipeline._cleanup_done.is_set())
+
     def test_restart_waits_for_cancelled_initialization_cleanup(self):
         entered, cleaned, release = threading.Event(), threading.Event(), threading.Event()
         observations = []
