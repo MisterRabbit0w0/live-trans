@@ -1,0 +1,56 @@
+name: Windows packages
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: "1"
+      HF_HUB_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+          cache: pip
+          cache-dependency-path: packaging/requirements-windows.lock
+      - name: Install locked dependencies and application
+        run: |
+          python -m pip install --require-hashes -r packaging/requirements-windows.lock
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: Install pinned Inno Setup compiler
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $installer
+          $expected = '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732'
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+            throw 'Inno Setup checksum mismatch'
+          }
+          $compilerDir = Join-Path $env:RUNNER_TEMP 'InnoSetup'
+          $process = Start-Process -FilePath $installer -WindowStyle Hidden -Wait -PassThru -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/NOICONS', "/DIR=`"$compilerDir`""
+          )
+          if ($process.ExitCode -ne 0) { throw "Compiler installation failed: $($process.ExitCode)" }
+          $compiler = Join-Path $compilerDir 'ISCC.exe'
+          if (!(Test-Path -LiteralPath $compiler)) { throw 'ISCC.exe missing' }
+          "ISCC=$compiler" >> $env:GITHUB_ENV
+      - name: Build portable ZIP, standalone EXE and installer
+        run: python scripts/build_windows.py --iscc "$env:ISCC"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-windows
+          path: dist/windows/*
+          if-no-files-found: error
+          retention-days: 14
