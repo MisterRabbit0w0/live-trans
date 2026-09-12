@@ -5,4 +5,4 @@ recursive-include scripts *.py *.ps1
 recursive-include docs *.md
 recursive-include tests *.py
 recursive-include packaging *.py *.spec *.iss *.in *.lock *.txt
-recursive-include .github *.yml *.md
+recursive-include .github *.yml
