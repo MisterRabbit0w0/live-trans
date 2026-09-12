@@ -164,6 +164,14 @@ class SettingsStore(QObject):
 
     def sync_font(self, size: int):
         # A direct subtitle shortcut must not later be overwritten by a stale draft.
+        previous_saved = self._saved["subtitle"]["font_size"]
         self._saved["subtitle"]["font_size"] = size
         self._draft["subtitle"]["font_size"] = size
+        self.changed.emit()
+        return previous_saved
+
+    @Slot(int)
+    def restore_font_snapshot(self, size: int):
+        """Restore the persisted font snapshot after a failed direct save."""
+        self._saved["subtitle"]["font_size"] = size
         self.changed.emit()

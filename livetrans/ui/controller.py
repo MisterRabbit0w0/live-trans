@@ -227,11 +227,12 @@ class AppController(QObject):
     def adjustFont(self, delta):
         size = max(10, min(48, self.cfg.subtitle.font_size + delta))
         self.cfg.subtitle.font_size = size
-        self.settings.sync_font(size)
+        previous_saved = self.settings.sync_font(size)
         self.changed.emit()
         try:
             self.cfg.save(self._path)
         except OSError:
+            self.settings.restore_font_snapshot(previous_saved)
             self._message("字号已调整，但暂时无法保存到配置文件。", True)
 
     @Slot()

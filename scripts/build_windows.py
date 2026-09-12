@@ -36,6 +36,8 @@ def prepare_metadata(version):
     from PySide6.QtSvg import QSvgRenderer
 
     generated = ROOT / "build" / "release-metadata"
+    if generated.exists():
+        shutil.rmtree(generated)
     generated.mkdir(parents=True, exist_ok=True)
     renderer = QSvgRenderer(str(ROOT / "livetrans" / "assets" / "livetrans.svg"))
     if not renderer.isValid():
