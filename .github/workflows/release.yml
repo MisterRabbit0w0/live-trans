@@ -1,26 +1,62 @@
-name: release
+name: Release
 
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build-and-release:
-    runs-on: ubuntu-latest
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Build sdist + wheel
-        run: |
-          pip install build
-          python -m build
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+      - run: python scripts/release_artifacts.py --validate-tag
+
+  checks:
+    needs: version
+    uses: ./.github/workflows/lint.yml
+
+  windows:
+    needs: checks
+    uses: ./.github/workflows/windows.yml
+
+  publish:
+    needs: [checks, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          files: dist/*
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - name: Verify artifact set, build revision and checksums
+        run: python scripts/release_artifacts.py --directory release
+      - name: Create draft for manual Windows acceptance
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: release/*
+          fail_on_unmatched_files: true
+          overwrite_files: false
           generate_release_notes: true
+          draft: true
