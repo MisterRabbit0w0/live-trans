@@ -41,13 +41,14 @@ def main():
             f"Unexpected release set: missing={expected-present}, extra={present-expected}",
         )
     checksums = {}
+    full_checksum_set = expected - {"SHA256SUMS.txt"}
     for line in (directory / "SHA256SUMS.txt").read_text("utf-8").splitlines():
         checksum, name = line.split("  ", 1)
-        if name not in windows or name in checksums:
+        if name not in full_checksum_set or name in checksums:
             raise SystemExit("Invalid or duplicate name in Windows checksum manifest")
         checksums[name] = checksum
-    if set(checksums) != windows:
-        raise SystemExit("Windows checksum manifest is incomplete")
+    if set(checksums) not in (windows, full_checksum_set):
+        raise SystemExit("Checksum manifest is incomplete or has an unexpected format")
     for name, expected_hash in checksums.items():
         if digest(directory / name) != expected_hash:
             raise SystemExit(f"Checksum mismatch: {name}")

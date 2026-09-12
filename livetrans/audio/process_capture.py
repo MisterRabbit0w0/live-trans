@@ -297,11 +297,15 @@ class ProcessLoopbackCapture:
         if self._init_error is not None:
             raise self._init_error
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 3.0) -> bool:
         self._stop_event.set()
         if self._thread is not None:
-            self._thread.join()
+            self._thread.join(timeout=max(0.0, timeout))
+            if self._thread.is_alive():
+                log.warning("按进程音频捕获线程未能在 %.1f 秒内停止", timeout)
+                return False
             self._thread = None
+        return True
 
     # ---- 捕获线程 ----
 

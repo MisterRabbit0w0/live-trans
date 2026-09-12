@@ -9,6 +9,7 @@ import itertools
 import logging
 import queue
 import threading
+import time
 from collections.abc import Callable
 
 import numpy as np
@@ -66,6 +67,9 @@ def build_capture(cfg, callback):
 
 
 class Pipeline:
+    _CAPTURE_STOP_TIMEOUT = 3.0
+    _WORKER_STOP_TIMEOUT = 5.0
+
     def __init__(
         self, cfg: AppConfig, emit: Callable[[dict], None],
         cancel: threading.Event | None = None, *,
@@ -89,6 +93,8 @@ class Pipeline:
         self._translator_factory = translator_factory
         self._capture_factory = capture_factory
         self._vad_factory = vad_factory
+        self._stop_lock = threading.Lock()
+        self._cleanup_pending = False
 
     def _emit(self, kind, **data):
         if not self._cancel.is_set():
@@ -141,24 +147,78 @@ class Pipeline:
                 self.stop()
 
     def stop(self):
-        self._cancel.set()
-        try:
-            if self._capture is not None:
-                self._capture.stop()
-                self._capture = None
-        finally:
-            # Do not close shared clients under an in-flight request.
-            for thread in self._threads:
-                thread.join()
-            self._threads.clear()
+        with self._stop_lock:
+            if self._cleanup_pending:
+                return
+            self._cancel.set()
+            capture = self._capture
+            self._capture = None
+            threads = self._threads
+            self._threads = []
+
+            if capture is not None:
+                self._stop_capture(capture)
+
+            deadline = time.monotonic() + self._WORKER_STOP_TIMEOUT
+            alive = []
+            for thread in threads:
+                thread.join(timeout=max(0.0, deadline - time.monotonic()))
+                if thread.is_alive():
+                    alive.append(thread)
+            if alive:
+                # Never close a shared client while a worker may still be using it.
+                # A daemon cleanup watcher closes resources once the abandoned
+                # session has observed cancellation and returned.
+                self._cleanup_pending = True
+                log.warning("%d 个管线线程未能在 %.1f 秒内停止，将后台清理",
+                            len(alive), self._WORKER_STOP_TIMEOUT)
+                threading.Thread(
+                    target=self._finish_deferred_cleanup,
+                    args=(alive,),
+                    name="livetrans-stop-cleanup",
+                    daemon=True,
+                ).start()
+                return
+            self._close_resources()
+
+    def _stop_capture(self, capture):
+        """Stop capture without letting a stalled native API block the coordinator."""
+        finished = threading.Event()
+
+        def stop_capture():
             try:
-                if self._translator is not None:
-                    self._translator.close()
-                    self._translator = None
+                capture.stop()
+            except Exception as error:
+                log.warning("音频捕获停止失败 (%s)", type(error).__name__)
             finally:
-                if self._engine is not None:
-                    self._engine.close()
-                    self._engine = None
+                finished.set()
+
+        threading.Thread(target=stop_capture, name="livetrans-capture-stop", daemon=True).start()
+        if not finished.wait(self._CAPTURE_STOP_TIMEOUT):
+            log.warning("音频捕获未能在 %.1f 秒内停止，将放弃等待", self._CAPTURE_STOP_TIMEOUT)
+
+    def _finish_deferred_cleanup(self, threads):
+        for thread in threads:
+            thread.join()
+        self._close_resources()
+        with self._stop_lock:
+            self._cleanup_pending = False
+
+    def _close_resources(self):
+        # This is called only after workers are done, so shared clients are safe to close.
+        translator, self._translator = self._translator, None
+        engine, self._engine = self._engine, None
+        try:
+            if translator is not None:
+                translator.close()
+        except Exception as error:
+            log.warning("翻译客户端关闭失败 (%s)", type(error).__name__)
+        finally:
+            try:
+                if engine is not None:
+                    engine.close()
+            except Exception as error:
+                log.warning("识别引擎关闭失败 (%s)", type(error).__name__)
 
     def set_paused(self, paused):
         self._paused = paused

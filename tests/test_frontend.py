@@ -256,6 +256,13 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(self.c.settings.dirty)
         self.assertEqual(self.c.cfg.subtitle.font_size, 22)
 
+    def test_font_shortcut_save_failure_keeps_dirty_draft(self):
+        with patch.object(AppConfig, "save", side_effect=PermissionError):
+            self.c.adjustFont(4)
+        self.assertEqual(self.c.cfg.subtitle.font_size, 26)
+        self.assertEqual(self.c.settings.draft["subtitle"]["font_size"], 26)
+        self.assertTrue(self.c.settings.dirty)
+
     def test_stage_recovery_does_not_clear_another_stage_error(self):
         self.running()
         self.c.togglePause()
