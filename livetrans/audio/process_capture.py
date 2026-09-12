@@ -295,13 +295,12 @@ class ProcessLoopbackCapture:
             self._stop_event.set()
             raise RuntimeError("按进程音频捕获初始化超时")
         if self._init_error is not None:
-            self._thread = None
             raise self._init_error
 
     def stop(self) -> None:
         self._stop_event.set()
         if self._thread is not None:
-            self._thread.join(timeout=3)
+            self._thread.join()
             self._thread = None
 
     # ---- 捕获线程 ----

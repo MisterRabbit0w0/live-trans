@@ -7,6 +7,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -55,6 +56,15 @@ class SubtitleStyle:
 
 
 @dataclass
+class UiConfig:
+    silent_start: bool = False
+    auto_translate: bool = False
+    theme: str = "system"  # system | light | dark
+    reduce_motion: bool = False
+    reduce_transparency: bool = False
+
+
+@dataclass
 class AppConfig:
     audio_source_mode: str = "system"  # system = 整个系统 | process = 指定软件
     audio_device_index: int = -1  # system 模式：-1 = 默认输出设备的环回
@@ -62,6 +72,7 @@ class AppConfig:
     asr: AsrConfig = field(default_factory=AsrConfig)
     translate: TranslateConfig = field(default_factory=TranslateConfig)
     subtitle: SubtitleStyle = field(default_factory=SubtitleStyle)
+    ui: UiConfig = field(default_factory=UiConfig)
     # VAD 参数
     vad_silence_ms: int = 500  # 停顿多久切句
     vad_max_segment_s: float = 8.0  # 最长强制切断
@@ -69,10 +80,18 @@ class AppConfig:
 
     def save(self, path: Path | None = None) -> None:
         p = path or config_path()
-        p.write_text(
-            json.dumps(dataclasses.asdict(self), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        p.parent.mkdir(parents=True, exist_ok=True)
+        # Keep the previous configuration intact if writing or replacing fails.
+        fd, temporary = tempfile.mkstemp(prefix=p.name + ".", suffix=".tmp", dir=p.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(dataclasses.asdict(self), stream, ensure_ascii=False, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, p)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
     @classmethod
     def load(cls, path: Path | None = None) -> AppConfig:
@@ -83,18 +102,34 @@ class AppConfig:
             data = json.loads(p.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return cls()
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> AppConfig:
         cfg = cls()
-        for section_name in ("asr", "translate", "subtitle"):
+        if not isinstance(data, dict):
+            return cfg
+
+        def assign(target, key, value):
+            if not hasattr(target, key) or key.startswith("_"):
+                return
+            default = getattr(target, key)
+            if type(value) is type(default) or (
+                isinstance(default, float) and type(value) is int
+            ):
+                setattr(target, key, value)
+
+        for section_name in ("asr", "translate", "subtitle", "ui"):
             section_data = data.get(section_name)
             if isinstance(section_data, dict):
                 section = getattr(cfg, section_name)
                 for k, v in section_data.items():
-                    if hasattr(section, k):
-                        setattr(section, k, v)
+                    if k in {f.name for f in dataclasses.fields(section)}:
+                        assign(section, k, v)
         for k in (
             "vad_silence_ms", "vad_max_segment_s", "vad_min_speech_ms",
             "audio_device_index", "audio_source_mode", "audio_process_name",
         ):
             if k in data:
-                setattr(cfg, k, data[k])
+                assign(cfg, k, data[k])
         return cfg
