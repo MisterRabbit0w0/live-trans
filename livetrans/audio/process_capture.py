@@ -1,7 +1,7 @@
 """按进程捕获音频（Windows Process Loopback API）。
 
 只捕获指定进程（及其子进程树）播放的声音，避免混入其他软件。
-需要 Windows 10 2004+ / Windows 11。
+需要 Windows Build 20348+，建议 Windows 11。
 
 参考 Windows ApplicationLoopback 官方示例：通过
 ActivateAudioInterfaceAsync 激活 VAD\\Process_Loopback 虚拟设备。
