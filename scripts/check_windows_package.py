@@ -25,7 +25,13 @@ def main():
     entries = {path.relative_to(internal).as_posix() for path in internal.rglob("*")
                if path.is_file()}
     onefile = CArchiveReader(str(directory / "LiveTrans-standalone.exe"))
-    embedded = {name.replace("\\", "/") for name in onefile.toc}
+    def normalize(name):
+        normalized = name.replace("\\", "/")
+        if normalized.startswith("_internal/"):
+            normalized = normalized[len("_internal/"):]
+        return normalized
+
+    embedded = {normalize(name) for name in onefile.toc}
     for label, names in (("portable", entries), ("standalone", embedded)):
         missing = required - names
         for suffix in ("platforms/qwindows.dll", "QtQuick/Controls/Basic/qmldir",
