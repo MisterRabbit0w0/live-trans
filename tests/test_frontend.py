@@ -266,6 +266,14 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.c.cfg.subtitle.font_size, 22)
         self.assertFalse(self.c.settings.dirty)
 
+    def test_successful_font_save_clears_previous_failure_recovery(self):
+        with patch.object(AppConfig, "save", side_effect=PermissionError):
+            self.c.adjustFont(4)
+        self.c.adjustFont(4)
+        self.c.settings.setValue("ui.theme", "dark")
+        self.c.discardSettings()
+        self.assertEqual(self.c.cfg.subtitle.font_size, 30)
+
     def test_stage_recovery_does_not_clear_another_stage_error(self):
         self.running()
         self.c.togglePause()

@@ -237,6 +237,8 @@ class AppController(QObject):
             self.settings.restore_font_snapshot(previous_saved)
             self._font_save_previous = previous_saved
             self._message("字号已调整，但暂时无法保存到配置文件。", True)
+        else:
+            self._font_save_previous = None
 
     @Slot()
     def discardSettings(self):
