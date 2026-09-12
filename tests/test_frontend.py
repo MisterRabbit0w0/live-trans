@@ -262,6 +262,9 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.c.cfg.subtitle.font_size, 26)
         self.assertEqual(self.c.settings.draft["subtitle"]["font_size"], 26)
         self.assertTrue(self.c.settings.dirty)
+        self.c.discardSettings()
+        self.assertEqual(self.c.cfg.subtitle.font_size, 22)
+        self.assertFalse(self.c.settings.dirty)
 
     def test_stage_recovery_does_not_clear_another_stage_error(self):
         self.running()

@@ -46,6 +46,7 @@ class AppController(QObject):
         self._model = ""
         self._restarting = False
         self._quitting = False
+        self._font_save_previous: int | None = None
         self._devices = [{"label": "默认输出设备", "value": -1}]
         self._processes = []
         self._refreshing = False
@@ -215,6 +216,7 @@ class AppController(QObject):
         was_paused = self._state == "paused"
         was_active = self._state in ("running", "paused")
         self.cfg = candidate
+        self._font_save_previous = None
         self.settings.commit(candidate)
         self.subtitles.set_limit(candidate.subtitle.max_lines)
         self.configApplied.emit(candidate)
@@ -233,7 +235,16 @@ class AppController(QObject):
             self.cfg.save(self._path)
         except OSError:
             self.settings.restore_font_snapshot(previous_saved)
+            self._font_save_previous = previous_saved
             self._message("字号已调整，但暂时无法保存到配置文件。", True)
+
+    @Slot()
+    def discardSettings(self):
+        self.settings.discard()
+        if self._font_save_previous is not None:
+            self.cfg.subtitle.font_size = self._font_save_previous
+            self._font_save_previous = None
+            self.changed.emit()
 
     @Slot()
     def dismissNotice(self):
