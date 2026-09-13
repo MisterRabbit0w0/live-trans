@@ -385,7 +385,7 @@ class ProcessLoopbackCapture:
         if activate_hr < 0:
             raise RuntimeError(
                 f"进程环回激活失败 (hr=0x{activate_hr & 0xFFFFFFFF:08X})，"
-                "需要 Windows 10 2004+ 且目标进程存在"
+                "需要 Windows Build 20348+ 且目标进程存在；旧系统请使用系统音频捕获"
             )
         client = unk.QueryInterface(IAudioClient)
 
