@@ -53,6 +53,8 @@ uv pip compile pyproject.toml packaging/requirements-build.in --python-version 3
 
 检查依赖变更和许可证后，在全新构建环境安装并重新构建。不要把 `pip freeze` 中的本机路径、私有镜像地址或编辑安装路径写进锁文件。
 
+公开的 `.lock` 文件使用自包含的固定版本与哈希列表。项目扫描会拒绝索引、find-links、外部 requirements / constraints、直接 URL、本地路径和 editable 引用；依赖来源通过上面的生成命令指定，不写入锁文件。
+
 ## 脱敏与提交
 
 ```powershell

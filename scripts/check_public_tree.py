@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXT_SUFFIXES = {".py", ".qml", ".md", ".toml", ".yml", ".yaml", ".json", ".txt",
-                 ".bat", ".ps1", ".iss", ".spec", ".svg", ".in"}
+                 ".bat", ".ps1", ".iss", ".spec", ".svg", ".in", ".lock"}
 PRIVATE_PARTS = {".venv", ".venv-build", ".cache", "__pycache__", "dist", "build",
                  ".idea", ".vscode"}
 SECRET_VALUE = re.compile(
@@ -28,6 +28,24 @@ PATTERNS = {
                              r"\.\d{1,3}\.\d{1,3}\b"),
     "url-credentials": re.compile(r"https?://[^\s/@:]+:[^\s/@]+@"),
 }
+# Release requirements locks are self-contained version/hash lists. Sources are
+# selected by the documented build process, never embedded in a public lock.
+LOCK_PATTERNS = {
+    "lock-source-option": re.compile(
+        r"^(?:--(?:index-url|extra-index-url|find-links|trusted-host|requirement|constraint)"
+        r"(?:[=\s]|$)|-[ifrc])"
+    ),
+    "lock-editable": re.compile(r"^(?:--editable(?:[=\s]|$)|-e(?:[^-]|$))"),
+    "lock-source-url": re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://"),
+    "lock-local-path": re.compile(
+        r"(?i)(?:\bfile:|(?:^|[\s@=\"'])(?:[a-z]:[/\\]|\.{1,2}[/\\]|~?[/\\])\S"
+        r"|(?:^|[\s@=\"'])[^\s;]+[/\\][^\s;]+)"
+    ),
+    "lock-local-archive": re.compile(
+        r"(?i)(?:^|\s@\s)[\"']?[^\s\"']+\.(?:whl|zip|tar(?:\.(?:gz|bz2|xz))?)"
+        r"(?:[\"'\s;]|$)"
+    ),
+}
 
 
 def git(*args):
@@ -40,11 +58,16 @@ def inspect_file(name: str, data: bytes):
             or path.name.startswith(".env.") and path.name != ".env.example"
             or path.suffix.lower() in {".log", ".wav", ".pem", ".key", ".pfx", ".p12"}):
         yield "private-file", 0
-    if path.suffix not in TEXT_SUFFIXES and path.name not in {
+    if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in {
         "LICENSE", ".gitignore", ".gitattributes", "qmldir",
     }:
         return
     for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+        if path.suffix.lower() == ".lock" and not line.lstrip().startswith("#"):
+            dependency = re.split(r"\s+#", line, maxsplit=1)[0].strip()
+            for rule, pattern in LOCK_PATTERNS.items():
+                if pattern.search(dependency):
+                    yield rule, number
         for rule, pattern in PATTERNS.items():
             if pattern.search(line):
                 if rule == "url-credentials" and (
