@@ -76,11 +76,5 @@ ColumnLayout {
             }
         }
     }
-    AppText {
-        visible: text !== ""
-        text: Theme.errorFor(root.path) || root.hint
-        color: Theme.errorFor(root.path) ? Theme.error : Theme.secondary
-        font.pixelSize: 12
-        Layout.fillWidth: true
-    }
+    SettingHint { path: root.path; hint: root.hint }
 }
