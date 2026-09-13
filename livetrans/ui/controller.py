@@ -121,6 +121,22 @@ class AppController(QObject):
             "本地 · 自动选择" if a.model == "auto" else f"本地 · {a.model}"
         )
 
+    @Property(str, notify=changed)
+    def sourceLanguageLabel(self):
+        return {
+            "auto": "自动检测", "en": "英语", "ja": "日语", "ko": "韩语",
+            "zh": "中文", "ru": "俄语", "es": "西班牙语", "fr": "法语",
+            "de": "德语",
+        }.get(self.cfg.asr.language, self.cfg.asr.language or "自动检测")
+
+    @Property(str, notify=changed)
+    def translationModelLabel(self):
+        return self.cfg.translate.model
+
+    @Property(str, notify=changed)
+    def targetLanguageLabel(self):
+        return self.cfg.translate.target_language
+
     @Property("QVariantList", notify=changed)
     def devices(self):
         return self._devices

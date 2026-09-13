@@ -260,6 +260,9 @@ class ControllerTests(unittest.TestCase):
         self.c.start()
         self.runtime.send("started", model="small", device="test", paused=False)
         self.assertEqual(self.c.modelLabel, "本地 · small")
+        self.assertEqual(self.c.sourceLanguageLabel, "自动检测")
+        self.assertEqual(self.c.translationModelLabel, "qwen2.5:7b-instruct")
+        self.assertEqual(self.c.targetLanguageLabel, "中文")
         self.c.settings.setValue("subtitle.font_size", 30)
         with patch.object(AppConfig, "save", side_effect=OSError(errno.ENOSPC, "full")):
             self.c.applySettings()
