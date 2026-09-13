@@ -70,11 +70,5 @@ ColumnLayout {
         }
         AppText { text: root.suffix; color: Theme.secondary; font.pixelSize: 12; Layout.preferredWidth: 24 }
     }
-    AppText {
-        visible: text !== ""
-        text: Theme.errorFor(root.path) || root.hint
-        color: Theme.errorFor(root.path) ? Theme.error : Theme.secondary
-        font.pixelSize: 12
-        Layout.fillWidth: true
-    }
+    SettingHint { path: root.path; hint: root.hint }
 }

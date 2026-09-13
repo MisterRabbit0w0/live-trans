@@ -17,8 +17,14 @@ Window {
     minimumHeight: Math.min(540, Screen.desktopAvailableHeight)
     property int currentPage: 0
     property string validationPath: ""
-    property var pages: ["概览", "声音来源", "语音识别", "翻译", "字幕外观", "通用"]
-    property var symbols: ["overview", "audio", "mic", "translate", "subtitles", "settings"]
+    readonly property var pages: [
+        {title: "概览", symbol: "overview", source: "OverviewPage.qml"},
+        {title: "声音来源", symbol: "audio", source: "AudioPage.qml"},
+        {title: "语音识别", symbol: "mic", source: "AsrPage.qml"},
+        {title: "翻译", symbol: "translate", source: "TranslationPage.qml"},
+        {title: "字幕外观", symbol: "subtitles", source: "SubtitlePage.qml"},
+        {title: "通用", symbol: "settings", source: "GeneralPage.qml"}
+    ]
     onClosing: function(close) { close.accepted = false; root.hide(); }
     onCurrentPageChanged: {
         if (currentPage === 1) appController.refreshDevices();
@@ -50,7 +56,7 @@ Window {
         Image { source: "../../assets/livetrans.svg"; sourceSize: Qt.size(28, 28); Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
         AppText { text: "LiveTrans"; font.pixelSize: 15; font.weight: Font.DemiBold }
     }
-    AppText { x: 248; y: 18; text: root.pages[root.currentPage]; color: Theme.secondary; font.pixelSize: 12 }
+    AppText { x: 248; y: 18; text: root.pages[root.currentPage].title; color: Theme.secondary; font.pixelSize: 12 }
     Row {
         id: windowButtons
         anchors.right: parent.right
@@ -96,19 +102,19 @@ Window {
                 model: root.pages
                 delegate: Button {
                     id: nav
-                    required property string modelData
+                    required property var modelData
                     required property int index
                     objectName: "nav" + index
                     Layout.fillWidth: true
                     implicitHeight: 43
                     padding: 12
-                    Accessible.name: modelData
+                    Accessible.name: modelData.title
                     onClicked: root.currentPage = index
                     contentItem: RowLayout {
                         spacing: 12
-                        Icon { name: root.symbols[nav.index]; color: root.currentPage === nav.index ? Theme.accent : Theme.secondary; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                        Icon { name: nav.modelData.symbol; color: root.currentPage === nav.index ? Theme.accent : Theme.secondary; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
                         AppText {
-                            text: nav.modelData
+                            text: nav.modelData.title
                             color: root.currentPage === nav.index ? Theme.accent : Theme.foreground
                             font.pixelSize: 13; font.weight: root.currentPage === nav.index ? Font.DemiBold : Font.Normal
                             Layout.fillWidth: true
@@ -180,7 +186,7 @@ Window {
                 id: pageLoader
                 width: scroll.availableWidth
                 height: item ? item.implicitHeight + 8 : 0
-                source: ["OverviewPage.qml", "AudioPage.qml", "AsrPage.qml", "TranslationPage.qml", "SubtitlePage.qml", "GeneralPage.qml"][root.currentPage]
+                source: root.pages[root.currentPage].source
                 onLoaded: {
                     scroll.contentItem.contentY = 0;
                     if (root.currentPage === 2 && (root.validationPath.indexOf("vad_") === 0 || root.validationPath === "asr.device")) item.advanced = true;
