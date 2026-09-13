@@ -9,7 +9,7 @@ import time
 import unittest
 from dataclasses import asdict
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import httpx
 import numpy as np
@@ -345,6 +345,22 @@ class SubtitleTests(unittest.TestCase):
 
 
 class TranslationTests(unittest.TestCase):
+    def test_chinese_request_specifies_target_script(self):
+        for target, script in (("中文", "简体中文"), ("繁体中文", "繁体中文")):
+            with self.subTest(target=target), patch("httpx.Client") as client:
+                client.return_value.post.return_value = httpx.Response(
+                    200, json={"choices": [{"message": {"content": "example-result"}}]},
+                    request=httpx.Request("POST", "https://example.invalid/v1"),
+                )
+                translator = OpenAICompatTranslator("https://example.invalid/v1", "", "fake",
+                                                    target)
+                try:
+                    translator.translate("example-input", source_language="zh")
+                    body = client.return_value.post.call_args.kwargs["json"]
+                    self.assertIn(script, body["messages"][0]["content"])
+                finally:
+                    translator.close()
+
     def test_concurrent_unsupported_thinking_option_retries_per_request(self):
         first_options_seen = threading.Barrier(2)
         retry_done = threading.Event()
@@ -382,6 +398,31 @@ class TranslationTests(unittest.TestCase):
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_chinese_scripts_are_translated_and_other_matching_languages_bypass(self):
+        cases = (
+            ("繁体中文", "zh", "简体汉字", True),
+            ("中文", "zh", "繁體漢字", True),
+            ("英语", "en", "hello", False),
+            ("葡萄牙语", "pt", "olá", False),
+        )
+        for target, language, original, needs_translation in cases:
+            with self.subTest(target=target):
+                cfg = AppConfig()
+                cfg.translate.target_language = target
+                events = []
+                pipeline = Pipeline(cfg, events.append)
+                pipeline._engine = Mock()
+                pipeline._engine.transcribe.return_value = AsrResult(language, original)
+                with patch.object(pipeline, "_items", return_value=iter([np.ones(1600)])):
+                    pipeline._asr_worker()
+                translations = [e["translation"] for e in events if e["kind"] == "translation"]
+                if needs_translation:
+                    self.assertEqual(pipeline._trans_q.get_nowait(), (1, original, language))
+                    self.assertEqual(translations, [])
+                else:
+                    self.assertTrue(pipeline._trans_q.empty())
+                    self.assertEqual(translations, [original])
+
     def test_target_languages_have_exact_codes(self):
         for value in ("中文", "繁体中文", "英语", "葡萄牙语", "印地语", "印度尼西亚语", "波兰语"):
             self.assertTrue(target_lang_code(value), value)

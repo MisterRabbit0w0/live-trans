@@ -234,7 +234,9 @@ class Pipeline:
                 continue
             entry_id = next(self._ids)
             self._emit("entry", id=entry_id, original=result.text, language=result.language)
-            if target_code and result.language == target_code:
+            # Whisper's zh code carries no script information. Chinese targets
+            # must still pass through translation for simplified/traditional conversion.
+            if target_code and target_code != "zh" and result.language == target_code:
                 self._emit("translation", id=entry_id, translation=result.text)
             else:
                 self._put(self._trans_q, (entry_id, result.text, result.language))

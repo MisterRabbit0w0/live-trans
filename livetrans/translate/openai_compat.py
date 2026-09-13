@@ -26,6 +26,11 @@ class OpenAICompatTranslator(Translator):
     def __init__(self, base_url: str, api_key: str, model: str, target_language: str = "中文"):
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._model = model
+        # Keep legacy JSON values while making the UI's Chinese script explicit.
+        target_language = {
+            "中文": "简体中文", "中文（简体）": "简体中文",
+            "中文（繁体）": "繁体中文",
+        }.get(target_language, target_language)
         self._system = SYSTEM_PROMPT.format(target=target_language)
         self._client = httpx.Client(
             headers={"Authorization": f"Bearer {api_key}"}, timeout=30.0
