@@ -69,10 +69,6 @@ ColumnLayout {
             AppText { text: "源语言 · " + appController.sourceLanguageLabel; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true }
             ActionButton { text: "调整识别"; symbol: "arrow"; quiet: true; implicitHeight: 30; onClicked: page.navigate(2) }
         }
-    }
-    RowLayout {
-        Layout.fillWidth: true
-        spacing: 16
         Panel {
             Layout.fillWidth: true
             Layout.preferredWidth: 1
@@ -88,7 +84,6 @@ ColumnLayout {
             AppText { text: "目标语言 · " + appController.targetLanguageLabel; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true }
             ActionButton { text: "调整翻译"; symbol: "arrow"; quiet: true; implicitHeight: 30; onClicked: page.navigate(3) }
         }
-        Item { Layout.fillWidth: true; Layout.preferredWidth: 1 }
     }
     Panel {
         Layout.fillWidth: true

@@ -10,10 +10,11 @@ from PySide6.QtGui import QWindow
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 from shiboken6 import delete
 
 from .config import AppConfig, config_dir
+from .instance import SingleInstance
 from .ui.controller import AppController
 from .ui.materials import Appearance
 from .ui.tray import Tray, _make_icon
@@ -120,9 +121,19 @@ class App:
 
 
 def main():
-    setup_logging()
-    app = App()
-    return app.run()
+    instance = SingleInstance(config_dir() / "instance.lock")
+    if not instance.acquire():
+        # This path intentionally initializes only the light Qt widgets needed
+        # for a useful duplicate-launch message, never the QML engine/audio.
+        qt = QApplication.instance() or QApplication(sys.argv)
+        QMessageBox.information(qt.activeWindow(), "LiveTrans", "LiveTrans 已经在运行中。")
+        return 0
+    try:
+        setup_logging()
+        app = App()
+        return app.run()
+    finally:
+        instance.release()
 
 
 if __name__ == "__main__":

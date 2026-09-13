@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QApplication
 
 from livetrans.asr.base import AsrResult
 from livetrans.config import AppConfig
+from livetrans.instance import SingleInstance
 from livetrans.languages import target_lang_code
 from livetrans.pipeline import Pipeline
 from livetrans.translate.openai_compat import OpenAICompatTranslator
@@ -95,6 +96,21 @@ class ConfigTests(unittest.TestCase):
                     cfg.save(path)
             self.assertEqual(path.read_bytes(), original)
             self.assertEqual(list(Path(tmp).iterdir()), [path])
+
+
+class InstanceTests(unittest.TestCase):
+    def test_only_one_process_owns_the_instance_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "instance.lock"
+            first = SingleInstance(path)
+            second = SingleInstance(path)
+            self.assertTrue(first.acquire())
+            try:
+                self.assertFalse(second.acquire())
+            finally:
+                first.release()
+            self.assertTrue(second.acquire())
+            second.release()
 
     def test_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:
