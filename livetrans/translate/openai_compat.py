@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import threading
+
 import httpx
 
 from .base import Translator
@@ -24,6 +26,11 @@ class OpenAICompatTranslator(Translator):
     def __init__(self, base_url: str, api_key: str, model: str, target_language: str = "中文"):
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._model = model
+        # Keep legacy JSON values while making the UI's Chinese script explicit.
+        target_language = {
+            "中文": "简体中文", "中文（简体）": "简体中文",
+            "中文（繁体）": "繁体中文",
+        }.get(target_language, target_language)
         self._system = SYSTEM_PROMPT.format(target=target_language)
         self._client = httpx.Client(
             headers={"Authorization": f"Bearer {api_key}"}, timeout=30.0
@@ -32,9 +39,12 @@ class OpenAICompatTranslator(Translator):
         # SiliconFlow/Ollama 等支持 enable_thinking 关闭；不支持的端点
         # （如 OpenAI 官方）会返回 400，此时去掉该参数重试并不再发送。
         self._extra_body: dict = {"enable_thinking": False}
+        self._options_lock = threading.Lock()
 
     def translate(self, text: str, source_language: str = "") -> str:
         user = f"[{source_language}] {text}" if source_language else text
+        with self._options_lock:
+            extra_body = self._extra_body.copy()
         body = {
             "model": self._model,
             "messages": [
@@ -44,11 +54,14 @@ class OpenAICompatTranslator(Translator):
             "temperature": 0.3,
             "max_tokens": 512,
             "stream": False,
-            **self._extra_body,
+            **extra_body,
         }
         resp = self._client.post(self._url, json=body)
-        if resp.status_code == 400 and self._extra_body:
-            self._extra_body = {}
+        if resp.status_code == 400 and "enable_thinking" in body:
+            # Retry this request even if another worker has already disabled the
+            # option for future requests. Never serialize the network calls.
+            with self._options_lock:
+                self._extra_body = {}
             body.pop("enable_thinking", None)
             resp = self._client.post(self._url, json=body)
         resp.raise_for_status()
