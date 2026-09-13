@@ -1,19 +1,27 @@
-"""LiveTrans 入口：装配配置、字幕窗、管线与托盘。"""
+"""Assemble the QML windows, shared controller, native materials and tray."""
 from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 
+from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtGui import QWindow
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickWindow
+from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication, QMessageBox
+from shiboken6 import delete
 
 from .config import AppConfig, config_dir
-from .pipeline import Pipeline
-from .ui.settings_dialog import SettingsDialog
-from .ui.subtitle_window import SubtitleWindow
-from .ui.tray import Tray
+from .instance import SingleInstance
+from .ui.controller import AppController
+from .ui.materials import Appearance
+from .ui.tray import Tray, _make_icon
+from .ui.window_controls import WindowControls
 
 
-def setup_logging() -> None:
+def setup_logging():
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
@@ -25,66 +33,107 @@ def setup_logging() -> None:
 
 
 class App:
-    def __init__(self):
-        self.qt = QApplication(sys.argv)
+    def __init__(self, cfg=None, config_file=None, runtime=None):
+        QQuickWindow.setDefaultAlphaBuffer(True)
+        if QQuickStyle.name() != "Basic":
+            QQuickStyle.setStyle("Basic")
+        self.qt = QApplication.instance() or QApplication(sys.argv)
+        self.qt.setApplicationName("LiveTrans")
+        self.qt.setOrganizationName("LiveTrans")
         self.qt.setQuitOnLastWindowClosed(False)
-        self.cfg = AppConfig.load()
-        self.window = SubtitleWindow(self.cfg.subtitle)
-        self.pipeline = Pipeline(self.cfg, self.window)
-        self.tray = Tray(
-            on_toggle_pause=self._toggle_pause,
-            on_toggle_window=self._toggle_window,
-            on_settings=self._open_settings,
-            on_quit=self._quit,
+        self.qt.setWindowIcon(_make_icon())
+        self.controller = AppController(
+            cfg if cfg is not None else AppConfig.load(), config_file, runtime,
         )
+        self.appearance = Appearance(self.controller.cfg)
+        self.window_controls = WindowControls()
+        self.subtitle_controls = WindowControls(resizable=False, persistent_material=True)
+        self.engine = QQmlApplicationEngine()
+        self.engine.warnings.connect(self._qml_warnings)
+        context = self.engine.rootContext()
+        for name, obj in (
+            ("appController", self.controller), ("preferences", self.controller.settings),
+            ("subtitleModel", self.controller.subtitles), ("appearance", self.appearance),
+            ("windowControls", self.window_controls),
+            ("subtitleControls", self.subtitle_controls),
+        ):
+            context.setContextProperty(name, obj)
+        qml = Path(__file__).parent / "ui" / "qml"
+        self.engine.load(QUrl.fromLocalFile(str(qml / "Main.qml")))
+        self.engine.load(QUrl.fromLocalFile(str(qml / "SubtitleWindow.qml")))
+        windows = {window.objectName(): window for window in self.engine.rootObjects()}
+        if "controlCenter" not in windows or "subtitleWindow" not in windows:
+            self.controller.close()
+            raise RuntimeError("无法加载 LiveTrans 界面，请检查安装中的 QML 资源")
+        self.main_window = windows["controlCenter"]
+        self.subtitle_window = windows["subtitleWindow"]
+        self.subtitle_window.setTransientParent(None)
+        self.window_controls.attach(self.main_window)
+        self.subtitle_controls.attach(self.subtitle_window)
+        # Place windows once. Binding x/y to width/height recenters the HWND
+        # during native resizing and fights both the mouse and Windows snapping.
+        area = self.main_window.screen().availableGeometry()
+        width, height = min(1040, round(area.width() * .92)), min(720, round(area.height() * .92))
+        self.main_window.setGeometry(
+            area.x() + (area.width() - width) // 2,
+            area.y() + (area.height() - height) // 2, width, height,
+        )
+        self.subtitle_window.setPosition(
+            area.x() + (area.width() - self.subtitle_window.width()) // 2,
+            max(area.y(), area.bottom() - self.subtitle_window.height() - 100),
+        )
+        self.appearance.attach(self.main_window, self.subtitle_window)
+        self.controller.configApplied.connect(self.appearance.configure)
+        self.controller.showRequested.connect(self.show_main)
+        self.controller.quitReady.connect(self.qt.quit)
+        self.tray = Tray(self.controller)
+        self.qt.aboutToQuit.connect(self.shutdown)
+        self._closed = False
 
-    def run(self) -> int:
+    @staticmethod
+    def _qml_warnings(errors):
+        for error in errors:
+            logging.warning("QML: %s", error.toString())
+
+    def show_main(self):
+        if self.main_window.visibility() == QWindow.Visibility.Minimized:
+            self.main_window.showNormal()
+        else:
+            self.main_window.show()
+        self.main_window.raise_()
+        self.main_window.requestActivate()
+
+    def run(self):
         self.tray.show()
-        self.window.show()
-        try:
-            self.pipeline.start()
-        except Exception as e:
-            logging.exception("启动音频捕获失败")
-            QMessageBox.critical(None, "LiveTrans", f"启动音频捕获失败：{e}")
-            return 1
+        QTimer.singleShot(0, self.controller.startup)
         return self.qt.exec()
 
-    def _toggle_pause(self) -> bool:
-        self.pipeline.set_paused(not self.pipeline.paused)
-        return self.pipeline.paused
-
-    def _toggle_window(self) -> bool:
-        self.window.setVisible(not self.window.isVisible())
-        return self.window.isVisible()
-
-    def _open_settings(self) -> None:
-        dlg = SettingsDialog(self.cfg, on_saved=self._apply_settings)
-        dlg.exec()
-
-    def _apply_settings(self) -> None:
-        # 引擎类配置需要重建管线；字幕样式即时生效
-        self.pipeline.stop()
-        self.window.clear_entries()
-        self.pipeline = Pipeline(self.cfg, self.window)
-        try:
-            self.pipeline.start()
-        except Exception as e:
-            logging.exception("应用设置后启动管线失败")
-            QMessageBox.warning(
-                None, "LiveTrans",
-                f"启动捕获失败：{e}\n\n"
-                "若使用'指定软件'模式，请先让该软件播放声音，再重新保存设置。",
-            )
-
-    def _quit(self) -> None:
-        self.pipeline.stop()
-        self.cfg.save()
-        self.qt.quit()
+    def shutdown(self):
+        if not self._closed:
+            self._closed = True
+            self.tray.hide()
+            self.controller.close()
+            self.appearance.stop()
+            self.window_controls.detach()
+            self.subtitle_controls.detach()
+            # Destroy bindings before their Python context objects are finalized.
+            delete(self.engine)
 
 
-def main() -> int:
-    setup_logging()
-    return App().run()
+def main():
+    instance = SingleInstance(config_dir() / "instance.lock")
+    if not instance.acquire():
+        # This path intentionally initializes only the light Qt widgets needed
+        # for a useful duplicate-launch message, never the QML engine/audio.
+        qt = QApplication.instance() or QApplication(sys.argv)
+        QMessageBox.information(qt.activeWindow(), "LiveTrans", "LiveTrans 已经在运行中。")
+        return 0
+    try:
+        setup_logging()
+        app = App()
+        return app.run()
+    finally:
+        instance.release()
 
 
 if __name__ == "__main__":

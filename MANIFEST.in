@@ -1,0 +1,8 @@
+include start.bat
+include THIRD_PARTY_NOTICES.md
+include CONTRIBUTING.md SECURITY.md
+recursive-include scripts *.py *.ps1
+recursive-include docs *.md
+recursive-include tests *.py
+recursive-include packaging *.py *.spec *.iss *.in *.lock *.txt
+recursive-include .github *.yml

@@ -1,6 +1,7 @@
-"""管线编排：capture → vad → asr → translate → ui。
+"""Audio → VAD → recognition → translation, independent of any window.
 
-各环节独立线程，队列衔接；翻译不阻塞识别（原文先上屏，译文后补）。
+Lifecycle methods run on the runtime coordinator, never on the GUI thread.
+Each session owns its engines, queues and cancellation event.
 """
 from __future__ import annotations
 
@@ -8,6 +9,8 @@ import itertools
 import logging
 import queue
 import threading
+import time
+from collections.abc import Callable
 
 import numpy as np
 
@@ -17,199 +20,233 @@ from .asr.whisper_local import LocalWhisper
 from .audio.capture import LoopbackCapture
 from .audio.vad import VadSegmenter
 from .config import AppConfig
-from .translate.base import Translator
+from .languages import target_lang_code
 from .translate.openai_compat import OpenAICompatTranslator
-from .ui.subtitle_window import SubtitleWindow
 
 log = logging.getLogger(__name__)
-_SENTINEL = None
-
-# 目标语言文本 → whisper 语言代码（用于源语言==目标语言时跳过翻译）
-_TARGET_LANG_CODES = {
-    "中": "zh", "英": "en", "日": "ja", "韩": "ko",
-    "俄": "ru", "法": "fr", "德": "de", "西": "es",
-}
-
-
-def target_lang_code(target_language: str) -> str:
-    t = target_language.strip()
-    if not t:
-        return ""
-    low = t.lower()
-    if low.startswith("eng"):
-        return "en"
-    if low.startswith("chin"):
-        return "zh"
-    return _TARGET_LANG_CODES.get(t[0], "")
-
-
 def build_asr(cfg: AppConfig) -> AsrEngine:
     if cfg.asr.backend == "cloud":
         return CloudWhisper(cfg.asr.cloud_base_url, cfg.asr.cloud_api_key, cfg.asr.cloud_model)
     return LocalWhisper(cfg.asr.model, cfg.asr.device)
 
 
-def build_translator(cfg: AppConfig) -> Translator:
+def build_translator(cfg: AppConfig):
     t = cfg.translate
     return OpenAICompatTranslator(t.base_url, t.api_key, t.model, t.target_language)
 
 
+def build_capture(cfg, callback):
+    if cfg.audio_source_mode == "process":
+        import comtypes
+
+        from .audio.process_capture import ProcessLoopbackCapture, find_pid_by_name
+
+        comtypes.CoInitialize()
+        try:
+            pid = find_pid_by_name(cfg.audio_process_name)
+        finally:
+            comtypes.CoUninitialize()
+        return ProcessLoopbackCapture(callback, pid=pid, process_name=cfg.audio_process_name)
+    return LoopbackCapture(callback, device_index=cfg.audio_device_index)
+
+
 class Pipeline:
-    def __init__(self, cfg: AppConfig, window: SubtitleWindow):
+    _STOP_TIMEOUT = 5.0
+    _CAPTURE_RETRY_DELAY = 0.1
+
+    def __init__(
+        self, cfg: AppConfig, emit: Callable[[dict], None],
+        cancel: threading.Event | None = None, *,
+        asr_factory=build_asr, translator_factory=build_translator,
+        capture_factory=build_capture, vad_factory=VadSegmenter,
+    ):
         self._cfg = cfg
-        self._window = window
-        self._running = False
+        self._emit_callback = emit
+        self._cancel = cancel if cancel is not None else threading.Event()
         self._paused = False
         self._ids = itertools.count(1)
-        self._audio_q: queue.Queue = queue.Queue(maxsize=256)
-        self._asr_q: queue.Queue = queue.Queue(maxsize=16)
-        self._trans_q: queue.Queue = queue.Queue(maxsize=64)
-        self._threads: list[threading.Thread] = []
-        self._capture = None  # LoopbackCapture | ProcessLoopbackCapture
-        self._translator: Translator | None = None
-        self._trans_warned = False
+        self._audio_q = queue.Queue(maxsize=256)
+        self._asr_q = queue.Queue(maxsize=16)
+        self._trans_q = queue.Queue(maxsize=64)
+        self._threads = []
+        self._capture = None
+        self._engine = None
+        self._translator = None
+        self._vad = None
+        self._asr_factory = asr_factory
+        self._translator_factory = translator_factory
+        self._capture_factory = capture_factory
+        self._vad_factory = vad_factory
+        self._stop_lock = threading.Lock()
+        self._cleanup_thread = None
+        self._cleanup_done = threading.Event()
+        self._session_started = False
 
-    # ---------- 生命周期 ----------
+    def _emit(self, kind, **data):
+        if not self._cancel.is_set():
+            self._emit_callback(dict(kind=kind, **data))
 
-    def start(self) -> None:
-        if self._running:
-            return
-        self._running = True
-        self._paused = False
-        # 翻译起 2 个 worker：云端 API 延迟抖动大，并发避免队列积压
-        self._translator = build_translator(self._cfg)
-        for target, name in (
-            (self._vad_worker, "vad"),
-            (self._asr_worker, "asr"),
-            (self._translate_worker, "translate-0"),
-            (self._translate_worker, "translate-1"),
-        ):
-            t = threading.Thread(target=target, name=f"livetrans-{name}", daemon=True)
-            t.start()
-            self._threads.append(t)
-        if self._cfg.audio_source_mode == "process" and self._cfg.audio_process_name:
-            from .audio.process_capture import ProcessLoopbackCapture, find_pid_by_name
-
-            pid = find_pid_by_name(self._cfg.audio_process_name)
-            self._capture = ProcessLoopbackCapture(
-                self._on_audio_chunk, pid=pid, process_name=self._cfg.audio_process_name
-            )
-        else:
-            self._capture = LoopbackCapture(
-                self._on_audio_chunk, device_index=self._cfg.audio_device_index
-            )
-        self._capture.start()
-        log.info("捕获设备: %s", self._capture.device_name)
-
-    def stop(self) -> None:
-        if not self._running:
-            return
-        self._running = False
-        if self._capture:
-            self._capture.stop()
-            self._capture = None
-        for q, n in ((self._audio_q, 1), (self._asr_q, 1), (self._trans_q, 2)):
-            for _ in range(n):  # 每个 worker 一个哨兵
-                try:
-                    q.put_nowait(_SENTINEL)
-                except queue.Full:
-                    pass
-        self._threads.clear()
-        if self._translator is not None:
-            self._translator.close()
-            self._translator = None
-
-    def set_paused(self, paused: bool) -> None:
+    def start(self, paused=False):
+        with self._stop_lock:
+            if self._session_started and not self._cleanup_done.is_set():
+                raise RuntimeError("上一次会话仍在清理，请稍后重试")
+            self._session_started = True
+            self._cleanup_done.clear()
         self._paused = paused
-        self._window.status_changed.emit("已暂停" if paused else "")
+        stage = "asr"
+        try:
+            self._emit("stage", stage="asr", status="loading")
+            if self._cancel.is_set():
+                return
+            self._engine = self._asr_factory(self._cfg)
+            self._emit("stage", stage="asr", status="ready")
+            if self._cancel.is_set():
+                return
+            stage = "translate"
+            self._emit("stage", stage=stage, status="loading")
+            self._translator = self._translator_factory(self._cfg)
+            self._emit("stage", stage=stage, status="ready")
+            stage = "audio"
+            self._emit("stage", stage=stage, status="loading")
+            self._vad = self._vad_factory(
+                on_segment=self._on_segment, silence_ms=self._cfg.vad_silence_ms,
+                max_segment_s=self._cfg.vad_max_segment_s,
+                min_speech_ms=self._cfg.vad_min_speech_ms,
+            )
+            self._capture = self._capture_factory(self._cfg, self._on_audio_chunk)
+            if self._cancel.is_set():
+                return
+            for target, name in (
+                (self._vad_worker, "vad"), (self._asr_worker, "asr"),
+                (self._translate_worker, "translate-0"),
+                (self._translate_worker, "translate-1"),
+            ):
+                thread = threading.Thread(target=target, name=f"livetrans-{name}", daemon=True)
+                self._threads.append(thread)
+                thread.start()
+            self._capture.start()
+            self._emit("stage", stage="audio", status="ready")
+            model = getattr(self._engine, "model_name", self._cfg.asr.cloud_model
+                            if self._cfg.asr.backend == "cloud" else self._cfg.asr.model)
+            self._emit("started", device=self._capture.device_name, model=model, paused=paused)
+        except Exception as error:
+            self._error(stage, error)
+            self._cancel.set()
+            raise
+        finally:
+            if self._cancel.is_set():
+                self.stop()
+
+    def stop(self):
+        """Bound the caller's wait; only report success after all resources stop."""
+        self._cancel.set()
+        with self._stop_lock:
+            if self._cleanup_done.is_set():
+                return True
+            if self._cleanup_thread is None or not self._cleanup_thread.is_alive():
+                self._cleanup_thread = threading.Thread(
+                    target=self._cleanup,
+                    name="livetrans-stop-cleanup",
+                    daemon=True,
+                )
+                self._cleanup_thread.start()
+        return self._cleanup_done.wait(self._STOP_TIMEOUT)
+
+    def _cleanup(self):
+        # A single daemon owns cleanup even across repeated stop/retry requests.
+        # Keep native capture and clients reachable until they confirm completion.
+        try:
+            while self._capture is not None:
+                if self._capture.stop() is False:
+                    time.sleep(self._CAPTURE_RETRY_DELAY)
+                    continue
+                self._capture = None
+            for thread in self._threads:
+                thread.join()
+            self._threads.clear()
+            if self._translator is not None:
+                self._translator.close()
+                self._translator = None
+            if self._engine is not None:
+                self._engine.close()
+                self._engine = None
+        except Exception as error:
+            # An explicit retry can resume from the first resource still retained.
+            log.warning("会话清理失败 (%s)，保留资源等待重试", type(error).__name__)
+            return
+        self._cleanup_done.set()
+
+    def set_paused(self, paused):
+        self._paused = paused
 
     @property
-    def paused(self) -> bool:
+    def paused(self):
         return self._paused
 
-    # ---------- 各环节 ----------
+    def _on_audio_chunk(self, chunk: np.ndarray):
+        if not self._paused and not self._cancel.is_set():
+            self._put(self._audio_q, chunk)
 
-    def _on_audio_chunk(self, chunk: np.ndarray) -> None:
-        if self._paused or not self._running:
-            return
-        try:
-            self._audio_q.put_nowait(chunk)
-        except queue.Full:
-            pass  # 下游堵塞时丢弃最新音频，避免内存暴涨
+    def _on_segment(self, audio):
+        self._put(self._asr_q, audio)
 
-    def _vad_worker(self) -> None:
-        seg = VadSegmenter(
-            on_segment=self._on_segment,
-            silence_ms=self._cfg.vad_silence_ms,
-            max_segment_s=self._cfg.vad_max_segment_s,
-            min_speech_ms=self._cfg.vad_min_speech_ms,
-        )
-        while self._running:
-            chunk = self._audio_q.get()
-            if chunk is _SENTINEL:
-                break
-            seg.feed(chunk)
-
-    def _on_segment(self, audio: np.ndarray) -> None:
-        try:
-            self._asr_q.put_nowait(audio)
-        except queue.Full:
-            log.warning("识别不及音频产生速度，丢弃一句")
-
-    def _asr_worker(self) -> None:
-        self._window.status_changed.emit("正在加载识别模型…")
-        try:
-            engine = build_asr(self._cfg)
-        except Exception as e:
-            log.exception("ASR 初始化失败")
-            self._window.status_changed.emit(f"识别模型加载失败: {e}")
-            return
-        self._window.status_changed.emit("")
-        lang_cfg = self._cfg.asr.language
-        target_code = target_lang_code(self._cfg.translate.target_language)
-        while self._running:
-            audio = self._asr_q.get()
-            if audio is _SENTINEL:
-                break
+    def _put(self, target, value):
+        if not self._cancel.is_set():
             try:
-                lang = None if lang_cfg == "auto" else lang_cfg
-                result = engine.transcribe(audio, language=lang)
-            except Exception as e:
-                log.exception("识别失败")
-                self._window.status_changed.emit(f"识别出错: {e}")
+                target.put_nowait(value)
+            except queue.Full:
+                log.warning("处理不及音频产生速度，丢弃一段")
+
+    def _items(self, source):
+        while not self._cancel.is_set():
+            try:
+                value = source.get(timeout=0.1)
+            except queue.Empty:
                 continue
+            if not self._cancel.is_set():
+                yield value
+
+    def _error(self, stage, exception):
+        # Exception text can contain endpoint credentials; expose only its type.
+        log.warning("%s 失败 (%s)", stage, type(exception).__name__)
+        self._emit("stage", stage=stage, status="error", error=type(exception).__name__)
+
+    def _vad_worker(self):
+        for chunk in self._items(self._audio_q):
+            try:
+                self._vad.feed(chunk)
+            except Exception as error:
+                self._error("audio", error)
+            else:
+                self._emit("stage", stage="audio", status="ready")
+
+    def _asr_worker(self):
+        target_code = target_lang_code(self._cfg.translate.target_language)
+        language = None if self._cfg.asr.language == "auto" else self._cfg.asr.language
+        for audio in self._items(self._asr_q):
+            try:
+                result = self._engine.transcribe(audio, language=language)
+            except Exception as error:
+                self._error("asr", error)
+                continue
+            self._emit("stage", stage="asr", status="ready")
             if not result.text:
                 continue
             entry_id = next(self._ids)
-            self._window.entry_added.emit(entry_id, result.text, result.language)
-            if target_code and result.language == target_code:
-                # 源语言已是目标语言，跳过翻译直接回填（UI 只显示一行）
-                self._window.translation_ready.emit(entry_id, result.text)
-                continue
-            try:
-                self._trans_q.put_nowait((entry_id, result.text, result.language))
-            except queue.Full:
-                pass
-        engine.close()
+            self._emit("entry", id=entry_id, original=result.text, language=result.language)
+            # Whisper's zh code carries no script information. Chinese targets
+            # must still pass through translation for simplified/traditional conversion.
+            if target_code and target_code != "zh" and result.language == target_code:
+                self._emit("translation", id=entry_id, translation=result.text)
+            else:
+                self._put(self._trans_q, (entry_id, result.text, result.language))
 
-    def _translate_worker(self) -> None:
-        translator = self._translator
-        while self._running:
-            item = self._trans_q.get()
-            if item is _SENTINEL or translator is None:
-                break
-            entry_id, text, lang = item
+    def _translate_worker(self):
+        for entry_id, text, language in self._items(self._trans_q):
             try:
-                translation = translator.translate(text, source_language=lang)
-                if self._trans_warned:
-                    self._trans_warned = False
-                    self._window.status_changed.emit("")
-            except Exception as e:
-                log.exception("翻译失败")
-                if not self._trans_warned:
-                    self._trans_warned = True
-                    self._window.status_changed.emit(
-                        f"翻译不可用（检查 Ollama 是否启动 / API 配置）: {type(e).__name__}"
-                    )
+                translation = self._translator.translate(text, source_language=language)
+            except Exception as error:
+                self._error("translate", error)
                 continue
-            self._window.translation_ready.emit(entry_id, translation)
+            self._emit("stage", stage="translate", status="ready")
+            self._emit("translation", id=entry_id, translation=translation)

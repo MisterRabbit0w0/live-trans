@@ -8,3 +8,4 @@
 # 二进制资源不做换行转换
 *.onnx binary
 *.wav binary
+*.ico binary

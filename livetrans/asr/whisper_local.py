@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 
 import numpy as np
 
@@ -44,7 +45,9 @@ class LocalWhisper(AsrEngine):
         from faster_whisper import WhisperModel
 
         if model == "auto" or device == "auto":
-            vram = detect_free_vram_mb()
+            # Frozen releases omit CUDA DLLs. Avoid selecting a GPU model just
+            # because a graphics driver is present on the user's machine.
+            vram = 0 if getattr(sys, "frozen", False) else detect_free_vram_mb()
             auto_model, auto_device, compute = pick_model(vram)
             model = auto_model if model == "auto" else model
             device = auto_device if device == "auto" else device
