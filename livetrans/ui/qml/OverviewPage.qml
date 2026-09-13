@@ -62,12 +62,33 @@ ColumnLayout {
             gap: 8
             RowLayout {
                 Layout.fillWidth: true
-                Icon { name: "translate" }
-                AppText { text: "语言与识别"; color: Theme.secondary; Layout.fillWidth: true }
+                Icon { name: "mic" }
+                AppText { text: "语音识别"; color: Theme.secondary; Layout.fillWidth: true }
             }
-            AppText { text: appController.modelLabel + "  →  " + appController.committed.translate.target_language; font.weight: Font.DemiBold; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
+            AppText { text: appController.modelLabel; font.weight: Font.DemiBold; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
+            AppText { text: "源语言 · " + appController.sourceLanguageLabel; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true }
             ActionButton { text: "调整识别"; symbol: "arrow"; quiet: true; implicitHeight: 30; onClicked: page.navigate(2) }
         }
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 16
+        Panel {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            Layout.fillHeight: true
+            padding: 18
+            gap: 8
+            RowLayout {
+                Layout.fillWidth: true
+                Icon { name: "translate" }
+                AppText { text: "翻译"; color: Theme.secondary; Layout.fillWidth: true }
+            }
+            AppText { text: appController.translationModelLabel; font.weight: Font.DemiBold; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
+            AppText { text: "目标语言 · " + appController.targetLanguageLabel; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true }
+            ActionButton { text: "调整翻译"; symbol: "arrow"; quiet: true; implicitHeight: 30; onClicked: page.navigate(3) }
+        }
+        Item { Layout.fillWidth: true; Layout.preferredWidth: 1 }
     }
     Panel {
         Layout.fillWidth: true
