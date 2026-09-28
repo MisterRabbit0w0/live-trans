@@ -40,6 +40,13 @@ def validate_config(cfg: AppConfig) -> dict[str, str]:
         required("asr.model", cfg.asr.model)
         if cfg.asr.device not in ("auto", "cuda", "cpu"):
             errors["asr.device"] = "请选择计算设备"
+        if cfg.asr.runtime.strip():
+            from ..worker.client import resolve_interpreter
+
+            try:
+                resolve_interpreter(cfg.asr.runtime.strip())
+            except OSError:
+                errors["asr.runtime"] = "找不到该 Python 环境，请填写环境目录或解释器路径"
     else:
         errors["asr.backend"] = "请选择识别方式"
     endpoint("translate.base_url", cfg.translate.base_url)
@@ -76,12 +83,12 @@ def engine_config(cfg: AppConfig) -> dict:
     if cfg.audio_source_mode == "system":
         data.pop("audio_process_name")
     else:
-        data.pop("audio_device_index")
+        data.pop("audio_device")
     if cfg.asr.backend == "local":
         for key in ("cloud_base_url", "cloud_api_key", "cloud_model"):
             data["asr"].pop(key)
     else:
-        for key in ("model", "device"):
+        for key in ("model", "device", "runtime"):
             data["asr"].pop(key)
     return {"transcribe": data, "translate": translate, "record": record}
 

@@ -54,6 +54,7 @@ class App:
         for name, obj in (
             ("appController", self.controller), ("preferences", self.controller.settings),
             ("subtitleModel", self.controller.subtitles), ("appearance", self.appearance),
+            ("models", self.controller.models),
             ("windowControls", self.window_controls),
             ("subtitleControls", self.subtitle_controls),
         ):

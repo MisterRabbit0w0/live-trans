@@ -21,7 +21,15 @@
 
 ## 安装
 
-当前支持 Windows x64。系统音频捕获可用于 Windows 10/11，指定软件捕获的版本要求见 [微软示例](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)。
+发行包目前只提供 Windows x64；macOS 与 Linux 可从源码运行。各平台的声音捕获方式：
+
+| 平台 | 整个系统 | 指定软件 |
+|---|---|---|
+| Windows 10/11 | WASAPI 环回 | Process Loopback API，需要 Build 20348+（见 [微软示例](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)） |
+| macOS 13+ | ScreenCaptureKit，首次使用需在「隐私与安全性 › 屏幕录制」中允许 | ScreenCaptureKit，按应用名或 Bundle ID |
+| Linux | PulseAudio / PipeWire（pipewire-pulse）输出设备的监听源 | `parec --monitor-stream` 录制该程序的播放流，不改变播放路由 |
+
+Linux 需要系统提供 `pactl` 与 `parec`（Debian/Ubuntu：`pulseaudio-utils`）。macOS 与 Linux 的捕获目前只有离线单元测试，尚未在真机上验收。
 
 ### 安装程序与独立 EXE
 
@@ -33,9 +41,9 @@
 | `LiveTrans-版本-windows-x64-portable.zip` | 完整解压后运行 `LiveTrans.exe`，保留旁边的 `_internal` 文件夹 |
 | `LiveTrans-版本-windows-x64-standalone.exe` | 直接运行，启动时会先解压内置依赖，体积与启动耗时较大 |
 
-发行包默认用 CPU 进行本地识别，也可切换云端识别。包内不包含 CUDA DLL、Whisper 模型、Ollama 或翻译模型。首次使用本地识别时会下载 Whisper 模型；需要 GPU 时使用下面的源码安装方式。
+发行包默认用 CPU 进行本地识别，也可切换云端识别。包内不包含 CUDA DLL、Whisper 模型、Ollama 或翻译模型。Whisper 模型在「语音识别」页的模型面板中手动下载，识别本身不会自动下载；下载的模型保存在 `LiveTrans.exe` 旁的 `models\` 目录（安装版为 `%LOCALAPPDATA%\Programs\LiveTrans\models`）。需要 GPU 时使用下面的源码安装方式。
 
-产物附带 `SHA256SUMS.txt`、依赖版本清单和第三方许可证。当前工作流没有配置代码签名；Windows 可能显示未知发布者提示。卸载安装版会保留 `%APPDATA%\livetrans` 下的配置、日志和翻译记录（`records\`），以及下载的模型缓存。
+产物附带 `SHA256SUMS.txt`、依赖版本清单和第三方许可证。当前工作流没有配置代码签名；Windows 可能显示未知发布者提示。卸载安装版会保留 `%APPDATA%\livetrans`（macOS 为 `~/Library/Application Support/livetrans`，Linux 为 `~/.config/livetrans`）下的配置、日志和翻译记录（`records\`）；下载的模型保存在安装目录的 `models\` 中，卸载同样不会删除，可在卸载前通过模型面板删除或手动删除。
 
 ### 从源码安装
 
@@ -66,7 +74,7 @@ python -m venv .venv
 
 ### 语音识别后端
 
-默认本地 faster-whisper，开始翻译时按空闲显存自动选档（首次使用会自动下载模型，需稍等）：
+默认本地 faster-whisper，开始翻译时按空闲显存从已下载的模型中自动选档（先在模型面板下载推荐模型）：
 
 | 空闲显存 | 模型 |
 |---|---|
@@ -75,6 +83,17 @@ python -m venv .venv
 | 无 GPU | small (CPU int8) |
 
 该自动选档用于源码运行；CPU 发行包自动选择 `small` 和 CPU int8。也可在设置中切到云端转写。
+
+本地模型在独立的模型进程中运行，与界面进程隔离：模型崩溃或卡死只会重启该进程，不会带走窗口；停止翻译后显存随进程一起释放。日志写入配置目录下的 `worker.log`。
+
+「语音识别 › 高级选项 › 模型运行环境」可以指定另一个 Python 环境（环境目录或解释器路径）来运行模型，例如给 CPU 发行包配一个带 CUDA 的环境：
+
+```powershell
+python -m venv D:\livetrans-cuda
+D:\livetrans-cuda\Scripts\pip install faster-whisper nvidia-cublas-cu12 "nvidia-cudnn-cu12>=9"
+```
+
+然后在设置中填写 `D:\livetrans-cuda`。该环境只需要 faster-whisper 及其依赖，不需要安装 LiveTrans；应用会以隔离模式（不读取用户 site-packages）启动它，并按显存自动选档。为该环境下载的模型保存在 `D:\livetrans-cuda\livetrans-models`；源码运行时模型保存在 `.venv\livetrans-models`，删除或重建虚拟环境会一并删除模型。此前缓存在 Hugging Face 缓存（`~/.cache/huggingface`）中的模型，点击「下载」时会直接复制而不再下载。
 
 ## 使用
 
@@ -128,7 +147,7 @@ Windows 也可能自行将材质替换为实色；API 成功不等于当前桌�
 
 默认跟随系统主题，并尊重系统的动画、透明度和高对比偏好。字幕保持深色底和高对比文字；实色回退时背景不透明度不参与合成。
 
-配置与日志位于 `%APPDATA%\livetrans\`。
+配置与日志位于用户配置目录（Windows 为 `%APPDATA%\livetrans\`），本地模型进程的日志为其中的 `worker.log`。
 
 翻译目标语言通过下拉框选择；旧配置中的自定义语言会保留在列表中。
 标题栏、任务栏与托盘共用 [无文字 SVG 图标](livetrans/assets/livetrans.svg)。
@@ -157,10 +176,13 @@ livetrans/
 ├── lifecycle.py       # 有界等待的资源清理
 ├── config.py          # 兼容旧字段的 JSON 配置与原子保存
 ├── audio/
-│   ├── capture.py         # WASAPI 环回捕获（整个系统）
-│   ├── process_capture.py # 按进程捕获（Process Loopback API）
+│   ├── base.py            # 平台无关的捕获接口、设备 / 应用发现、降混重采样
+│   ├── windows/           # WASAPI 环回（整个系统）与 Process Loopback API（指定软件）
+│   ├── linux.py           # PulseAudio / PipeWire：pactl 发现，parec 录制监听源或单个播放流
+│   ├── macos.py           # ScreenCaptureKit（macOS 13+，需屏幕录制权限）
 │   └── vad.py             # Silero VAD 流式切句
-├── asr/               # 语音识别：本地 faster-whisper / 云端
+├── asr/               # 语音识别：本地（独立模型进程）/ 云端
+├── worker/            # 本地模型运行时：独立进程、stdio 帧协议、崩溃自动重启
 ├── translate/         # 翻译：OpenAI 兼容客户端与后台翻译阶段
 ├── record/            # 翻译记录：JSONL 追加写入与读取合并
 ├── ui/

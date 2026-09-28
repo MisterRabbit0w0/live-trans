@@ -10,8 +10,10 @@ from pathlib import Path
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
+from ..audio import get_backend
 from ..config import AppConfig, config_dir
 from ..record.transcript import records_dir
+from .models import ModelManager
 from .runtime import RuntimeCoordinator
 from .settings import SettingsStore, engine_config, validate_config
 from .subtitle_model import SubtitleModel
@@ -35,12 +37,14 @@ class AppController(QObject):
         self._path = path
         self.settings = SettingsStore(cfg, self)
         self.subtitles = SubtitleModel(cfg.subtitle.max_lines, self)
+        self.models = ModelManager(parent=self)
         self.runtime = runtime or RuntimeCoordinator(parent=self)
         self.runtime.event.connect(self._runtime_event)
         self._generation = 0
         self._state = "idle"
         self._subtitle_visible = False
         self._stages = {}
+        self._stage_errors = {}
         self._notice = ""
         self._error = False
         self._device = ""
@@ -48,11 +52,20 @@ class AppController(QObject):
         self._restarting = False
         self._quitting = False
         self._font_save_previous: int | None = None
-        self._devices = [{"label": "默认输出设备", "value": -1}]
+        self._devices = [self._default_device()]
         self._processes = []
         self._refreshing = False
         self._discovery_error = ""
         self._devicesReady.connect(self._on_devices)
+
+    @staticmethod
+    def _default_device():
+        return {"label": get_backend().default_device_label, "value": ""}
+
+    @Property("QVariantMap", constant=True)
+    def audioHints(self):
+        backend = get_backend()
+        return {"system": backend.system_hint, "app": backend.app_hint}
 
     @Property(str, notify=changed)
     def state(self):
@@ -69,6 +82,9 @@ class AppController(QObject):
     @Property(str, notify=changed)
     def statusDetail(self):
         errors = {"audio": "声音处理异常", "asr": "语音识别异常", "translate": "翻译服务暂不可用"}
+        if self._stages.get("asr") == "error" \
+                and self._stage_errors.get("asr") == "ModelNotDownloaded":
+            return "所选识别模型尚未下载，请在语音识别页下载后重试。"
         for stage in ("audio", "asr", "translate"):
             if self._stages.get(stage) == "error":
                 return errors[stage] + "，请检查对应设置"
@@ -186,6 +202,7 @@ class AppController(QObject):
     def _begin_session(self, paused, resume=False):
         self._state = "starting"
         self._stages = {}
+        self._stage_errors = {}
         self._device = ""
         self._model = ""
         self.subtitles.clear()
@@ -297,9 +314,12 @@ class AppController(QObject):
             self.subtitles.translate(event["id"], event["translation"])
             return
         if kind == "stage":
-            if self._stages.get(event["stage"]) == event["status"]:
+            stage, error = event["stage"], event.get("error")
+            if self._stages.get(stage) == event["status"] \
+                    and self._stage_errors.get(stage) == error:
                 return
-            self._stages[event["stage"]] = event["status"]
+            self._stages[stage] = event["status"]
+            self._stage_errors[stage] = error
         elif kind == "started":
             self._state = "paused" if event.get("paused") else "running"
             self._device = event.get("device", "")
@@ -315,11 +335,13 @@ class AppController(QObject):
             self._state = "error"
             self._quitting = False
             prefix = "设置已保存，启动失败。" if self._restarting else "操作未完成。"
-            self._notice = prefix + (
-                "上一会话仍在停止，尚未启动新会话。请稍后重试。"
-                if event.get("reason") == "shutdown_pending"
-                else "请检查声音来源、模型或服务配置，然后重试。"
-            )
+            if event.get("reason") == "shutdown_pending":
+                detail = "上一会话仍在停止，尚未启动新会话。请稍后重试。"
+            elif event.get("error") == "ModelNotDownloaded":
+                detail = "所选识别模型尚未下载，请在「语音识别」页下载。"
+            else:
+                detail = "请检查声音来源、模型或服务配置，然后重试。"
+            self._notice = prefix + detail
             self._error = True
             self._restarting = False
             self.notification.emit(self._notice)
@@ -335,39 +357,26 @@ class AppController(QObject):
 
     def _discover(self):
         devices, processes, errors = [], [], []
+        backend = get_backend()
         try:
-            from ..audio.capture import list_loopback_devices
-
-            devices = [{"label": d["name"], "value": int(d["index"])}
-                       for d in list_loopback_devices()]
+            devices = [{"label": d.label, "value": d.id} for d in backend.list_devices()]
         except Exception:
+            log.warning("刷新输出设备失败", exc_info=True)
             errors.append("无法刷新输出设备")
         try:
-            import comtypes
-
-            from ..audio.process_capture import list_audio_processes
-
-            comtypes.CoInitialize()
-            try:
-                rows = sorted(list_audio_processes(), key=lambda row: not row[2])
-                seen = set()
-                for _, name, active in rows:
-                    if name not in seen:
-                        seen.add(name)
-                        processes.append({"label": name + (" · 发声中" if active else ""),
-                                          "value": name})
-            finally:
-                comtypes.CoUninitialize()
+            processes = [{"label": a.label + (" · 发声中" if a.active else ""), "value": a.name}
+                         for a in backend.list_apps()]
         except Exception:
+            log.warning("刷新软件列表失败", exc_info=True)
             errors.append("无法刷新软件列表，可直接输入进程名")
         self._devicesReady.emit(devices, processes, "；".join(errors))
 
     @Slot(object, object, str)
     def _on_devices(self, devices, processes, error):
-        self._devices = [{"label": "默认输出设备", "value": -1}] + devices
-        if self.cfg.audio_device_index not in [d["value"] for d in self._devices]:
+        self._devices = [self._default_device()] + devices
+        if self.cfg.audio_device not in [d["value"] for d in self._devices]:
             self._devices.append({"label": "已保存的设备（当前不可用）",
-                                  "value": self.cfg.audio_device_index})
+                                  "value": self.cfg.audio_device})
         self._processes = processes
         self._refreshing = False
         self._discovery_error = error
@@ -406,4 +415,5 @@ class AppController(QObject):
         self.changed.emit()
 
     def close(self):
+        self.models.close()
         self.runtime.close()

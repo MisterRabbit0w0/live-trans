@@ -11,14 +11,14 @@ ColumnLayout {
         }
         ChoiceSetting {
             visible: preferences.draft.audio_source_mode === "system"
-            path: "audio_device_index"; label: "输出设备"; options: appController.devices
-            hint: "捕获此设备正在播放的声音，不需要虚拟声卡。"
+            path: "audio_device"; label: "输出设备"; options: appController.devices
+            hint: appController.audioHints.system
         }
         ChoiceSetting {
             visible: preferences.draft.audio_source_mode === "process"
             path: "audio_process_name"; label: "目标软件"; options: appController.processes
             editable: true
-            hint: "先让软件播放声音再刷新，也可直接输入 chrome.exe 等进程名。"
+            hint: appController.audioHints.app
         }
         RowLayout {
             Layout.fillWidth: true

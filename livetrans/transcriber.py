@@ -15,9 +15,7 @@ from collections.abc import Callable
 import numpy as np
 
 from .asr.base import AsrEngine, AsrResult
-from .asr.whisper_cloud import CloudWhisper
-from .asr.whisper_local import LocalWhisper
-from .audio.capture import LoopbackCapture
+from .audio import get_backend
 from .audio.vad import SAMPLE_RATE, VadSegmenter
 from .config import AppConfig
 from .lifecycle import Cleanup
@@ -27,23 +25,19 @@ log = logging.getLogger(__name__)
 
 def build_asr(cfg: AppConfig) -> AsrEngine:
     if cfg.asr.backend == "cloud":
+        from .asr.whisper_cloud import CloudWhisper
+
         return CloudWhisper(cfg.asr.cloud_base_url, cfg.asr.cloud_api_key, cfg.asr.cloud_model)
-    return LocalWhisper(cfg.asr.model, cfg.asr.device)
+    from .asr.whisper_local import LocalWhisper
+
+    return LocalWhisper(cfg.asr.model, cfg.asr.device, cfg.asr.runtime)
 
 
 def build_capture(cfg, callback):
+    backend = get_backend()
     if cfg.audio_source_mode == "process":
-        import comtypes
-
-        from .audio.process_capture import ProcessLoopbackCapture, find_pid_by_name
-
-        comtypes.CoInitialize()
-        try:
-            pid = find_pid_by_name(cfg.audio_process_name)
-        finally:
-            comtypes.CoUninitialize()
-        return ProcessLoopbackCapture(callback, pid=pid, process_name=cfg.audio_process_name)
-    return LoopbackCapture(callback, device_index=cfg.audio_device_index)
+        return backend.open_app(callback, cfg.audio_process_name)
+    return backend.open_system(callback, cfg.audio_device)
 
 
 class Transcriber:

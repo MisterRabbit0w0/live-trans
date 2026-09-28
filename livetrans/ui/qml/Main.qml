@@ -189,7 +189,7 @@ Window {
                 source: root.pages[root.currentPage].source
                 onLoaded: {
                     scroll.contentItem.contentY = 0;
-                    if (root.currentPage === 2 && (root.validationPath.indexOf("vad_") === 0 || root.validationPath === "asr.device")) item.advanced = true;
+                    if (root.currentPage === 2 && (root.validationPath.indexOf("vad_") === 0 || (root.validationPath === "asr.device" || root.validationPath === "asr.runtime"))) item.advanced = true;
                     root.validationPath = "";
                 }
             }
@@ -257,7 +257,7 @@ Window {
             root.validationPath = path;
             const index = path.indexOf("audio_") === 0 ? 1 : path.indexOf("asr.") === 0 || path.indexOf("vad_") === 0 ? 2 : path.indexOf("translate.") === 0 ? 3 : path.indexOf("subtitle.") === 0 ? 4 : 5;
             root.currentPage = index;
-            if (index === 2 && (path.indexOf("vad_") === 0 || path === "asr.device") && pageLoader.item) pageLoader.item.advanced = true;
+            if (index === 2 && (path.indexOf("vad_") === 0 || (path === "asr.device" || path === "asr.runtime")) && pageLoader.item) pageLoader.item.advanced = true;
         }
     }
     Shortcut { sequence: "Ctrl+,"; onActivated: root.currentPage = 5 }

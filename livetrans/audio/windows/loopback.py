@@ -11,7 +11,7 @@ from collections.abc import Callable
 import numpy as np
 import pyaudiowpatch as pyaudio
 
-TARGET_RATE = 16000
+from ..base import to_mono_16k
 
 
 def list_loopback_devices() -> list[dict]:
@@ -72,17 +72,7 @@ class LoopbackCapture:
             frames = int(src_rate * self._chunk_ms / 1000)
 
             def callback(in_data, frame_count, time_info, status):
-                buf = np.frombuffer(in_data, dtype=np.float32)
-                if channels > 1:
-                    buf = buf.reshape(-1, channels).mean(axis=1)
-                if src_rate != TARGET_RATE:
-                    n_out = int(round(len(buf) * TARGET_RATE / src_rate))
-                    if n_out > 0:
-                        x_old = np.linspace(0.0, 1.0, num=len(buf), endpoint=False)
-                        x_new = np.linspace(0.0, 1.0, num=n_out, endpoint=False)
-                        buf = np.interp(x_new, x_old, buf).astype(np.float32)
-                    else:
-                        buf = np.empty(0, dtype=np.float32)
+                buf = to_mono_16k(np.frombuffer(in_data, dtype=np.float32), src_rate, channels)
                 if len(buf):
                     self._on_chunk(buf)
                 return (None, pyaudio.paContinue)

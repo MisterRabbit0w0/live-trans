@@ -25,6 +25,9 @@ class QmlTests(unittest.TestCase):
             lambda c: c._devicesReady.emit([], [{"label": "demo.exe", "value": "demo.exe"}], ""),
         )
         self.discovery.start()
+        # The model panel would otherwise start a real worker process to list models.
+        self.model_refresh = patch("livetrans.ui.models.ModelManager.refresh", lambda m, r: None)
+        self.model_refresh.start()
         self.app = App(AppConfig(), Path(self.temp.name) / "config.json", self.runtime)
         self.errors = []
         self.app.engine.warnings.connect(lambda values: self.errors.extend(str(v) for v in values))
@@ -35,6 +38,7 @@ class QmlTests(unittest.TestCase):
     def tearDown(self):
         self.app.shutdown()
         self.discovery.stop()
+        self.model_refresh.stop()
         self.temp.cleanup()
         self.assertEqual(self.errors, [])
 

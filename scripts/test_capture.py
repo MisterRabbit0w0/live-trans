@@ -1,4 +1,4 @@
-"""验证音频捕获：录制 5 秒系统声音存为 wav（播放任意视频后运行）。"""
+"""验证音频捕获：用当前平台的后端录制 5 秒系统声音存为 wav（播放任意视频后运行）。"""
 import sys
 import time
 import wave
@@ -7,10 +7,11 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from livetrans.audio.capture import TARGET_RATE, LoopbackCapture
+from livetrans.audio import get_backend
+from livetrans.audio.base import TARGET_RATE
 
 chunks = []
-cap = LoopbackCapture(chunks.append)
+cap = get_backend().open_system(chunks.append)
 cap.start()
 print(f"正在从 [{cap.device_name}] 录制 5 秒…请确保有声音在播放")
 time.sleep(5)

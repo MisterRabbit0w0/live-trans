@@ -1,88 +1,117 @@
-"""本地 faster-whisper 后端：显存检测自动选档，CUDA 失败回退 CPU。"""
+"""本地 faster-whisper 后端：模型运行在独立进程中，崩溃或卡死时自动重启。
+
+只加载运行环境中已下载的模型，从不隐式联网；下载由模型管理显式触发。
+"""
 from __future__ import annotations
 
 import logging
-import subprocess
 import sys
+import threading
+from collections.abc import Callable
 
 import numpy as np
 
+from ..worker.client import WorkerError, WorkerProcess
 from .base import AsrEngine, AsrResult
 
 log = logging.getLogger(__name__)
 
-
-def detect_free_vram_mb() -> int:
-    """通过 nvidia-smi 查询空闲显存(MB)，无 NVIDIA 显卡返回 0。"""
-    try:
-        out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        if out.returncode != 0:
-            return 0
-        return max(int(line) for line in out.stdout.split() if line.strip().isdigit())
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return 0
+LOAD_TIMEOUT = 5 * 60.0  # a large model from a slow disk; never a download
+TRANSCRIBE_TIMEOUT = 120.0  # a CPU fallback on a long segment stays well below this
+RESTARTS = 2  # per request; a model that keeps crashing is reported, not looped
 
 
-def pick_model(free_vram_mb: int) -> tuple[str, str, str]:
-    """根据空闲显存选 (model, device, compute_type)。
+def cuda_allowed(runtime: str) -> bool:
+    # Frozen releases omit CUDA DLLs. Avoid selecting a GPU model just
+    # because a graphics driver is present on the user's machine.
+    return bool(runtime) or not getattr(sys, "frozen", False)
 
-    注意：Blackwell (RTX 50xx) 等新架构显卡上 int8_float16 可能触发
-    cuBLAS 兼容性错误，统一使用 float16 更安全。
-    """
-    if free_vram_mb >= 5_000:
-        return "large-v3-turbo", "cuda", "float16"
-    if free_vram_mb >= 2_000:
-        return "small", "cuda", "float16"
-    return "small", "cpu", "int8"
+
+class ModelNotDownloaded(RuntimeError):
+    """The selected model is not in the runtime environment; ``model`` names it."""
+
+    def __init__(self, model: str):
+        super().__init__(f"模型 {model} 尚未下载")
+        self.model = model
 
 
 class LocalWhisper(AsrEngine):
-    def __init__(self, model: str = "auto", device: str = "auto"):
-        from faster_whisper import WhisperModel
+    """``runtime`` selects the worker's Python ("" = the app's own)."""
 
-        if model == "auto" or device == "auto":
-            # Frozen releases omit CUDA DLLs. Avoid selecting a GPU model just
-            # because a graphics driver is present on the user's machine.
-            vram = 0 if getattr(sys, "frozen", False) else detect_free_vram_mb()
-            auto_model, auto_device, compute = pick_model(vram)
-            model = auto_model if model == "auto" else model
-            device = auto_device if device == "auto" else device
-            log.info("空闲显存 %d MB → 模型 %s @ %s (%s)", vram, model, device, compute)
-        else:
-            compute = "float16" if device == "cuda" else "int8"
-
+    def __init__(self, model: str = "auto", device: str = "auto", runtime: str = "",
+                 worker_factory: Callable[[str], WorkerProcess] = WorkerProcess):
+        self._request = {"op": "load", "model": model, "device": device,
+                         "cuda": cuda_allowed(runtime)}
+        self._runtime = runtime
+        self._factory = worker_factory
+        self._lock = threading.Lock()
+        self._closed = False
+        self._worker = None
         self.model_name = model
+        self.device = device
+        self._spawn()
+
+    def _spawn(self):
+        worker = self._factory(self._runtime)
+        self._worker = worker
+        worker.start()
         try:
-            self._model = WhisperModel(model, device=device, compute_type=compute)
-            self.device = device
+            reply = worker.request(self._request, timeout=LOAD_TIMEOUT)
+        except WorkerError as error:
+            worker.kill()
+            if error.kind == "ModelMissing":
+                raise ModelNotDownloaded(str(error)) from None
+            raise
         except Exception:
-            if device == "cuda":
-                log.exception("CUDA 初始化失败，回退到 CPU (int8)")
-                self._model = WhisperModel(model, device="cpu", compute_type="int8")
-                self.device = "cpu"
-            else:
-                raise
+            worker.kill()
+            raise
+        self.model_name, self.device = reply["model"], reply["device"]
+        # A crash after this point restarts with what actually loaded, not "auto".
+        self._request.update(model=self.model_name, device=self.device)
 
     def transcribe(self, audio: np.ndarray, language: str | None = None) -> AsrResult:
-        try:
-            segments, info = self._model.transcribe(
-                audio,
-                language=language,
-                beam_size=1,
-                condition_on_previous_text=False,
-                without_timestamps=True,
-            )
-            text = "".join(s.text for s in segments).strip()
-            return AsrResult(language=info.language or (language or ""), text=text)
-        except RuntimeError as e:
-            if "cuda" in str(e).lower() or "cublas" in str(e).lower():
-                log.warning("CUDA 推理失败，回退 CPU int8: %s", e)
-                from faster_whisper import WhisperModel
-                self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
-                self.device = "cpu"
-                return self.transcribe(audio, language)
-            raise
+        payload = np.ascontiguousarray(audio, dtype=np.float32).tobytes()
+        with self._lock:
+            for attempt in range(RESTARTS + 1):
+                if self._closed:
+                    raise WorkerError("识别已停止", "WorkerClosed")
+                try:
+                    if not self._worker.alive:
+                        log.warning("模型进程已退出，正在重启")
+                        self._spawn()
+                    reply = self._worker.request(
+                        {"op": "transcribe", "language": language}, payload,
+                        timeout=TRANSCRIBE_TIMEOUT)
+                except WorkerError as error:
+                    if error.kind not in ("WorkerExited", "WorkerTimeout"):
+                        raise
+                    # Reap it now; a crashed child can still look alive until waited on.
+                    self._worker.kill()
+                    if self._closed:
+                        raise WorkerError("识别已停止", "WorkerClosed") from error
+                    if attempt == RESTARTS:
+                        raise
+                    continue
+                return AsrResult(language=reply.get("language") or (language or ""),
+                                 text=(reply.get("text") or "").strip())
+        raise AssertionError("unreachable")
+
+    def close(self) -> None:
+        self._closed = True
+        if self._lock.acquire(blocking=False):
+            # Idle: let the worker free its model and exit on its own.
+            try:
+                if self._worker is not None:
+                    self._worker.stop()
+                    self._worker = None
+            finally:
+                self._lock.release()
+            return
+        # A request is in flight: kill so it returns, then wait for it.
+        worker = self._worker
+        if worker is not None:
+            worker.kill()
+        with self._lock:
+            if self._worker is not None:
+                self._worker.kill()
+                self._worker = None

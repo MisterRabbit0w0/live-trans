@@ -18,9 +18,9 @@ import comtypes
 import numpy as np
 from comtypes import COMMETHOD, GUID, HRESULT, COMObject, IUnknown
 
-log = logging.getLogger(__name__)
+from ..base import to_mono_16k
 
-TARGET_RATE = 16000
+log = logging.getLogger(__name__)
 
 # ---------- Win32 / WASAPI 常量与结构 ----------
 
@@ -435,16 +435,7 @@ class ProcessLoopbackCapture:
                             buf = np.frombuffer(raw, dtype=np.float32).copy()
                         else:
                             buf = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768
-                    if channels > 1:
-                        buf = buf.reshape(-1, channels).mean(axis=1)
-                    if rate != TARGET_RATE:
-                        n_out = int(round(len(buf) * TARGET_RATE / rate))
-                        if n_out > 0:
-                            x_old = np.linspace(0.0, 1.0, num=len(buf), endpoint=False)
-                            x_new = np.linspace(0.0, 1.0, num=n_out, endpoint=False)
-                            buf = np.interp(x_new, x_old, buf).astype(np.float32)
-                        else:
-                            buf = np.empty(0, dtype=np.float32)
+                    buf = to_mono_16k(buf, rate, channels)
                     if len(buf) and not self._stop_event.is_set():
                         self._on_chunk(buf)
                 finally:
