@@ -1,0 +1,215 @@
+{
+  "state": {
+    "app": {
+      "state": "idle",
+      "statusTitle": "尚未开始",
+      "statusDetail": "确认声音来源和模型后，点击开始翻译。",
+      "busy": false,
+      "recording": false,
+      "subtitleVisible": false,
+      "notice": "",
+      "noticeIsError": false,
+      "committed": {
+        "audio_source_mode": "system",
+        "audio_device": "",
+        "audio_process_name": "",
+        "asr": {
+          "backend": "local",
+          "model": "auto",
+          "device": "auto",
+          "runtime": "",
+          "cloud_base_url": "https://api.groq.com/openai/v1",
+          "cloud_model": "whisper-large-v3-turbo",
+          "language": "auto"
+        },
+        "translate": {
+          "base_url": "http://localhost:11434/v1",
+          "model": "qwen2.5:7b-instruct",
+          "target_language": "中文"
+        },
+        "subtitle": {
+          "font_size": 22,
+          "show_original": true,
+          "max_lines": 3,
+          "opacity": 0.75,
+          "width": 900
+        },
+        "ui": {
+          "silent_start": false,
+          "auto_translate": false,
+          "theme": "system",
+          "accent": "system",
+          "reduce_motion": false,
+          "reduce_transparency": false
+        },
+        "record": {
+          "enabled": false
+        },
+        "vad_silence_ms": 500,
+        "vad_max_segment_s": 8.0,
+        "vad_min_speech_ms": 250,
+        "vad_threshold": 0.35,
+        "audio_gain_enabled": true
+      },
+      "sourceLabel": "系统声音",
+      "modelLabel": "本地 · 自动选择",
+      "sourceLanguageLabel": "自动检测",
+      "translationModelLabel": "qwen2.5:7b-instruct",
+      "targetLanguageLabel": "中文",
+      "devices": [
+        {
+          "label": "默认输出设备（模拟数据）",
+          "value": ""
+        }
+      ],
+      "processes": [],
+      "refreshing": false,
+      "discoveryError": "",
+      "audioHints": {
+        "system": "预览模式不采集声音，以下为模拟数据。",
+        "app": "预览模式不采集声音，以下为模拟数据。"
+      }
+    },
+    "settings": {
+      "draft": {
+        "audio_source_mode": "system",
+        "audio_device": "",
+        "audio_process_name": "",
+        "asr": {
+          "backend": "local",
+          "model": "auto",
+          "device": "auto",
+          "runtime": "",
+          "cloud_base_url": "https://api.groq.com/openai/v1",
+          "cloud_api_key": "",
+          "cloud_model": "whisper-large-v3-turbo",
+          "language": "auto"
+        },
+        "translate": {
+          "base_url": "http://localhost:11434/v1",
+          "api_key": "ollama",
+          "model": "qwen2.5:7b-instruct",
+          "target_language": "中文"
+        },
+        "subtitle": {
+          "font_size": 22,
+          "show_original": true,
+          "max_lines": 3,
+          "opacity": 0.75,
+          "width": 900
+        },
+        "ui": {
+          "silent_start": false,
+          "auto_translate": false,
+          "theme": "system",
+          "accent": "system",
+          "reduce_motion": false,
+          "reduce_transparency": false
+        },
+        "record": {
+          "enabled": false
+        },
+        "vad_silence_ms": 500,
+        "vad_max_segment_s": 8.0,
+        "vad_min_speech_ms": 250,
+        "vad_threshold": 0.35,
+        "audio_gain_enabled": true
+      },
+      "errors": {},
+      "dirty": false,
+      "targetLanguages": [
+        {
+          "label": "中文（简体）",
+          "value": "中文"
+        },
+        {
+          "label": "中文（繁体）",
+          "value": "繁体中文"
+        },
+        {
+          "label": "英语",
+          "value": "英语"
+        },
+        {
+          "label": "日语",
+          "value": "日语"
+        },
+        {
+          "label": "韩语",
+          "value": "韩语"
+        },
+        {
+          "label": "法语",
+          "value": "法语"
+        },
+        {
+          "label": "德语",
+          "value": "德语"
+        },
+        {
+          "label": "西班牙语",
+          "value": "西班牙语"
+        },
+        {
+          "label": "葡萄牙语",
+          "value": "葡萄牙语"
+        },
+        {
+          "label": "俄语",
+          "value": "俄语"
+        },
+        {
+          "label": "意大利语",
+          "value": "意大利语"
+        },
+        {
+          "label": "阿拉伯语",
+          "value": "阿拉伯语"
+        },
+        {
+          "label": "印地语",
+          "value": "印地语"
+        },
+        {
+          "label": "泰语",
+          "value": "泰语"
+        },
+        {
+          "label": "越南语",
+          "value": "越南语"
+        },
+        {
+          "label": "印度尼西亚语",
+          "value": "印度尼西亚语"
+        },
+        {
+          "label": "土耳其语",
+          "value": "土耳其语"
+        },
+        {
+          "label": "荷兰语",
+          "value": "荷兰语"
+        },
+        {
+          "label": "波兰语",
+          "value": "波兰语"
+        }
+      ]
+    },
+    "models": {
+      "state": "idle",
+      "busy": false,
+      "error": "",
+      "directory": "",
+      "writable": true,
+      "recommended": "",
+      "autoModel": "",
+      "installed": [],
+      "installedNames": [],
+      "target": "",
+      "progress": -1.0,
+      "progressText": ""
+    }
+  },
+  "subtitles": []
+}

@@ -104,11 +104,15 @@ class Session:
 
     def _replace_translation(self, cfg: AppConfig):
         old = self._translation
-        try:
-            new = self._start_translation(cfg)
-        except Exception:
-            # Already reported as a translation error; text keeps arriving untranslated.
+        if not getattr(cfg.translate, "enabled", True):
             new = None
+            self._report("translate", "off")
+        else:
+            try:
+                new = self._start_translation(cfg)
+            except Exception:
+                # Already reported as a translation error; text keeps arriving untranslated.
+                new = None
         self._translation = new
         if old is not None:
             old.request_stop()
@@ -116,7 +120,6 @@ class Session:
             if new is not None:
                 for utterance in old.drain():
                     new.submit(utterance)
-
     def set_paused(self, paused):
         if paused != self._transcriber.paused:
             self._record("mark", "paused" if paused else "resumed")
@@ -126,12 +129,14 @@ class Session:
     def paused(self):
         return self._transcriber.paused
 
-    def _start_translation(self, cfg: AppConfig) -> TranslationStage:
+    def _start_translation(self, cfg: AppConfig) -> TranslationStage | None:
+        if not getattr(cfg.translate, "enabled", True):
+            self._report("translate", "off")
+            return None
         stage = TranslationStage(cfg.translate, self._on_translation, self._report,
                                  translator_factory=self._translator_factory)
         stage.start()
         return stage
-
     def _configure_record(self, cfg: AppConfig):
         recorder = self._recorder
         if recorder is None:

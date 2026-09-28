@@ -16,7 +16,7 @@ import numpy as np
 
 from .asr.base import AsrEngine, AsrResult
 from .audio import get_backend
-from .audio.vad import SAMPLE_RATE, VadSegmenter
+from .audio.vad import SAMPLE_RATE, ConservativeAGC, VadSegmenter
 from .config import AppConfig
 from .lifecycle import Cleanup
 
@@ -70,6 +70,11 @@ class Transcriber:
         self._asr_factory = asr_factory
         self._capture_factory = capture_factory
         self._vad_factory = vad_factory
+        self._agc = (
+            ConservativeAGC()
+            if getattr(self._cfg, "audio_gain_enabled", True)
+            else None
+        )
         self._cleanup = Cleanup(self._release, "livetrans-transcriber-cleanup")
 
     @property
@@ -96,10 +101,15 @@ class Transcriber:
                 return
             stage = "audio"
             self._report(stage, "loading")
+            vad_kwargs = {}
+            if hasattr(self._cfg, "vad_threshold"):
+                vad_kwargs["start_threshold"] = self._cfg.vad_threshold
             self._vad = self._vad_factory(
-                on_segment=self._on_segment, silence_ms=self._cfg.vad_silence_ms,
+                on_segment=self._on_segment,
+                silence_ms=self._cfg.vad_silence_ms,
                 max_segment_s=self._cfg.vad_max_segment_s,
                 min_speech_ms=self._cfg.vad_min_speech_ms,
+                **vad_kwargs,
             )
             self._capture = self._capture_factory(self._cfg, self._on_audio_chunk)
             if self._cancel.is_set():
@@ -175,6 +185,8 @@ class Transcriber:
     def _vad_worker(self):
         for chunk in self._items(self._audio_q):
             try:
+                if self._agc is not None:
+                    chunk = self._agc.process(chunk)
                 self._vad.feed(chunk)
             except Exception as error:
                 self._report("audio", "error", type(error).__name__)

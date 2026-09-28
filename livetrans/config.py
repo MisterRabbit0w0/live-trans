@@ -47,12 +47,12 @@ class AsrConfig:
 
 @dataclass
 class TranslateConfig:
+    enabled: bool = True  # 是否开启翻译（关闭时仅进行语音识别与记录）
     # 本地 Ollama 与云端共用 OpenAI 兼容接口，仅 base_url/key/model 不同
     base_url: str = "http://localhost:11434/v1"
     api_key: str = "ollama"
     model: str = "qwen2.5:7b-instruct"
     target_language: str = "中文"
-
 
 @dataclass
 class SubtitleStyle:
@@ -68,6 +68,7 @@ class UiConfig:
     silent_start: bool = False
     auto_translate: bool = False
     theme: str = "system"  # system | light | dark
+    accent: str = "system"  # Material 3 种子色：system | #rrggbb
     reduce_motion: bool = False
     reduce_transparency: bool = False
 
@@ -91,7 +92,8 @@ class AppConfig:
     vad_silence_ms: int = 500  # 停顿多久切句
     vad_max_segment_s: float = 8.0  # 最长强制切断
     vad_min_speech_ms: int = 250  # 短于此的语音丢弃
-
+    vad_threshold: float = 0.35  # VAD 语音触发门限 (0.1 ~ 0.9，越小越灵敏)
+    audio_gain_enabled: bool = True  # 自适应电平增益（保守型平滑增益）
     def save(self, path: Path | None = None) -> None:
         p = path or config_path()
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -142,11 +144,11 @@ class AppConfig:
                         assign(section, k, v)
         for k in (
             "vad_silence_ms", "vad_max_segment_s", "vad_min_speech_ms",
+            "vad_threshold", "audio_gain_enabled",
             "audio_device", "audio_source_mode", "audio_process_name",
         ):
             if k in data:
                 assign(cfg, k, data[k])
-        # Before audio backends existed, a WASAPI device was saved as an integer index.
         legacy = data.get("audio_device_index")
         if "audio_device" not in data and type(legacy) is int and legacy >= 0:
             cfg.audio_device = str(legacy)

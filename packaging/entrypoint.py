@@ -1,4 +1,4 @@
-"""GUI entry point for the frozen application; also hosts the model worker."""
+"""Entry point for the frozen application; also hosts the model worker."""
 import multiprocessing
 import sys
 
@@ -9,6 +9,6 @@ if __name__ == "__main__":
         from livetrans.worker.server import main as worker_main
 
         raise SystemExit(worker_main())
-    from livetrans.main import main
+    from livetrans.app.server import main
 
     raise SystemExit(main())

@@ -13,42 +13,35 @@ from unittest.mock import Mock, patch
 
 import httpx
 import numpy as np
-from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtWidgets import QApplication
 
+from livetrans.app.controller import AppController
+from livetrans.app.loop import Loop
+from livetrans.app.runtime import RuntimeCoordinator
+from livetrans.app.settings import SettingsStore, engine_config, validate_config
+from livetrans.app.subtitles import SubtitleBuffer
 from livetrans.asr.base import AsrResult
 from livetrans.config import AppConfig
 from livetrans.events import Translation, Utterance
-from livetrans.instance import SingleInstance
 from livetrans.languages import target_lang_code
 from livetrans.record.transcript import Recorder, load_transcript
 from livetrans.session import Session
 from livetrans.transcriber import Transcriber
 from livetrans.translate.openai_compat import OpenAICompatTranslator
 from livetrans.translate.stage import TranslationStage
-from livetrans.ui.controller import AppController
-from livetrans.ui.runtime import RuntimeCoordinator
-from livetrans.ui.settings import SettingsStore, engine_config, validate_config
-from livetrans.ui.subtitle_model import SubtitleModel
-
-QT_APP = QApplication.instance() or QApplication([])
 
 
 def wait_until(predicate, timeout=3):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        QT_APP.processEvents()
         if predicate():
             return
         time.sleep(0.005)
     raise AssertionError("Timed out waiting for lifecycle event")
 
 
-class FakeRuntime(QObject):
-    event = Signal(int, object)
-
+class FakeRuntime:
     def __init__(self):
-        super().__init__()
+        self.on_event = lambda generation, event: None
         self.generation = 0
         self.starts = []
         self.stops = 0
@@ -77,8 +70,9 @@ class FakeRuntime(QObject):
     def close(self):
         pass
 
-    def send(self, kind, **kwargs):
-        self.event.emit(self.generation, dict(kind=kind, **kwargs))
+    def send(self, kind, generation=None, **kwargs):
+        self.on_event(self.generation if generation is None else generation,
+                      dict(kind=kind, **kwargs))
 
 
 class ConfigTests(unittest.TestCase):
@@ -90,6 +84,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.vad_max_segment_s, 9)
         self.assertFalse(cfg.ui.silent_start)
         self.assertFalse(cfg.ui.auto_translate)
+        self.assertEqual(cfg.ui.accent, "system")
 
     def test_bad_json_shapes_do_not_crash(self):
         for value in ([], None, "bad", {"subtitle": None}, {"ui": {"theme": 99}}):
@@ -108,21 +103,6 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), original)
             self.assertEqual(list(Path(tmp).iterdir()), [path])
 
-
-class InstanceTests(unittest.TestCase):
-    def test_only_one_process_owns_the_instance_lock(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "instance.lock"
-            first = SingleInstance(path)
-            second = SingleInstance(path)
-            self.assertTrue(first.acquire())
-            try:
-                self.assertFalse(second.acquire())
-            finally:
-                first.release()
-            self.assertTrue(second.acquire())
-            second.release()
-
     def test_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "config.json"
@@ -140,6 +120,15 @@ class InstanceTests(unittest.TestCase):
         cfg.asr.backend = "cloud"
         self.assertIn("asr.cloud_base_url", validate_config(cfg))
         self.assertIn("asr.cloud_model", validate_config(cfg))
+
+    def test_accent_color_validation(self):
+        cfg = AppConfig()
+        self.assertNotIn("ui.accent", validate_config(cfg))
+        cfg.ui.accent = "#1a2B3c"
+        self.assertNotIn("ui.accent", validate_config(cfg))
+        for bad in ("", "blue", "#fff", "#12345g", "system "):
+            cfg.ui.accent = bad
+            self.assertIn("ui.accent", validate_config(cfg), bad)
 
     def test_credentials_in_url_and_empty_process_rejected(self):
         cfg = AppConfig()
@@ -209,16 +198,24 @@ class ControllerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.path = Path(self.tmp.name) / "config.json"
+        self.loop = Loop()
         self.runtime = FakeRuntime()
-        self.c = AppController(AppConfig(), self.path, self.runtime)
+        self.events = []
+        self.c = AppController(AppConfig(), self.path, self.runtime, loop=self.loop,
+                               on_event=lambda name, payload: self.events.append(name))
 
     def tearDown(self):
         self.c.close()
         self.tmp.cleanup()
 
+    def pump(self):
+        while self.loop.process_pending(0.05):
+            pass
+
     def running(self):
         self.c.start()
         self.runtime.send("started", device="test", paused=False)
+        self.pump()
 
     def test_start_pause_resume_stop(self):
         self.running()
@@ -230,16 +227,18 @@ class ControllerTests(unittest.TestCase):
         self.c.stop()
         self.assertEqual(self.c.state, "stopping")
         self.runtime.send("stopped")
+        self.pump()
         self.assertEqual(self.c.state, "idle")
         self.assertFalse(self.c.subtitleVisible)
 
     def test_style_apply_keeps_session_and_subtitles(self):
         self.running()
         self.runtime.send("entry", id=1, original="hello", language="en")
+        self.pump()
         self.c.settings.setValue("subtitle.font_size", 30)
         self.c.applySettings()
         self.assertEqual(len(self.runtime.starts), 1)
-        self.assertEqual(self.c.subtitles.rowCount(), 1)
+        self.assertEqual(len(self.c.subtitles.rows()), 1)
         self.assertEqual(self.c.cfg.subtitle.font_size, 30)
         saved = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(saved["subtitle"]["font_size"], 30)
@@ -253,18 +252,21 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(len(self.runtime.starts), 2)
         self.assertTrue(self.runtime.starts[-1][1])
         self.runtime.send("started", paused=True)
+        self.pump()
         self.assertEqual(self.c.state, "paused")
 
     def test_translation_apply_reconfigures_without_restart(self):
         self.running()
         self.runtime.send("entry", id=1, original="hello", language="en")
+        self.pump()
         self.c.settings.setValue("translate.model", "custom")
         self.c.applySettings()
         self.assertEqual(len(self.runtime.starts), 1)
         self.assertEqual([c["translate"]["model"] for c in self.runtime.reconfigured], ["custom"])
         self.assertEqual(self.c.state, "running")
-        self.assertEqual(self.c.subtitles.rowCount(), 1)
+        self.assertEqual(len(self.c.subtitles.rows()), 1)
         self.runtime.send("translation", id=1, translation="你好")
+        self.pump()
         self.assertFalse(self.c.noticeIsError)
 
     def test_engine_restart_continues_record_but_user_start_does_not(self):
@@ -272,8 +274,10 @@ class ControllerTests(unittest.TestCase):
         self.c.settings.setValue("asr.model", "base")
         self.c.applySettings()
         self.runtime.send("started", paused=False)
+        self.pump()
         self.c.stop()
         self.runtime.send("stopped")
+        self.pump()
         self.c.start()
         self.assertEqual(self.runtime.resumes, [False, True, False])
 
@@ -286,9 +290,11 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(self.runtime.reconfigured[-1]["record"]["enabled"])
         self.assertTrue(self.c.recording)
         self.runtime.send("stage", stage="record", status="error", error="OSError")
+        self.pump()
         self.assertFalse(self.c.recording)
         self.assertIn("记录", self.c.statusDetail)
         self.runtime.send("stage", stage="record", status="ready")
+        self.pump()
         self.assertTrue(self.c.recording)
 
     def test_idle_apply_neither_starts_nor_reconfigures(self):
@@ -301,10 +307,11 @@ class ControllerTests(unittest.TestCase):
         generation = self.runtime.generation
         self.c.settings.setValue("asr.model", "base")
         self.c.applySettings()
-        self.runtime.event.emit(generation, {"kind": "entry", "id": 1,
-                                             "original": "old", "language": "en"})
-        self.runtime.event.emit(generation, {"kind": "failed"})
-        self.assertEqual(self.c.subtitles.rowCount(), 0)
+        self.runtime.send("entry", generation=generation, id=1,
+                          original="old", language="en")
+        self.runtime.send("failed", generation=generation)
+        self.pump()
+        self.assertEqual(len(self.c.subtitles.rows()), 0)
         self.assertEqual(self.c.state, "starting")
 
     def test_failed_save_does_not_change_committed_or_restart(self):
@@ -322,16 +329,19 @@ class ControllerTests(unittest.TestCase):
         self.c.settings.setValue("asr.model", "base")
         self.c.applySettings()
         self.runtime.send("failed", error="RuntimeError")
+        self.pump()
         self.assertIn("设置已保存，启动失败", self.c.notice)
         self.assertEqual(self.c.cfg.asr.model, "base")
         self.c.start()
         self.runtime.send("started", paused=False)
+        self.pump()
         self.assertEqual(self.c.state, "running")
         self.assertEqual(self.c.notice, "")
 
     def test_save_error_reason_and_selected_runtime_model(self):
         self.c.start()
         self.runtime.send("started", model="small", device="test", paused=False)
+        self.pump()
         self.assertEqual(self.c.modelLabel, "本地 · small")
         self.assertEqual(self.c.sourceLanguageLabel, "自动检测")
         self.assertEqual(self.c.translationModelLabel, "qwen2.5:7b-instruct")
@@ -366,6 +376,7 @@ class ControllerTests(unittest.TestCase):
         self.c.togglePause()
         self.runtime.send("stage", stage="asr", status="error")
         self.runtime.send("stage", stage="translate", status="ready")
+        self.pump()
         self.assertIn("识别异常", self.c.statusDetail)
         self.assertEqual(self.c.state, "paused")
 
@@ -374,50 +385,49 @@ class ControllerTests(unittest.TestCase):
             for auto in (False, True):
                 cfg = AppConfig()
                 cfg.ui.silent_start, cfg.ui.auto_translate = silent, auto
+                loop = Loop()
                 runtime = FakeRuntime()
-                c = AppController(cfg, self.path, runtime)
-                shown, notifications = [], []
-                c.showRequested.connect(lambda shown=shown: shown.append(True))
-                c.notification.connect(notifications.append)
+                events = []
+                c = AppController(cfg, self.path, runtime, loop=loop,
+                                  on_event=lambda name, payload, events=events:
+                                  events.append(name))
                 c.startup()
-                self.assertEqual(bool(shown), not silent)
+                self.assertEqual("showRequested" in events, not silent)
                 self.assertEqual(bool(runtime.starts), auto)
                 self.assertEqual(c.subtitleVisible, auto)
                 if auto:
                     runtime.send("failed")
-                    self.assertEqual(len(notifications), 1)
+                    while loop.process_pending(0.05):
+                        pass
+                    self.assertEqual(events.count("notification"), 1)
                 c.close()
 
     def test_quit_draft_confirmation_then_serial_stop(self):
-        confirm, finished = [], []
-        self.c.quitConfirmationRequested.connect(lambda: confirm.append(True))
-        self.c.quitReady.connect(lambda: finished.append(True))
         self.c.settings.setValue("ui.theme", "dark")
         self.c.requestQuit()
-        self.assertTrue(confirm)
+        self.assertIn("showRequested", self.events)
+        self.assertIn("quitConfirmationRequested", self.events)
         self.assertEqual(self.runtime.stops, 0)
         self.c.confirmQuit()
         self.runtime.send("stopped")
-        self.assertTrue(finished)
+        self.pump()
+        self.assertIn("quitReady", self.events)
         self.assertFalse(self.path.exists())
 
 
 class SubtitleTests(unittest.TestCase):
     def test_incremental_translation_and_eviction(self):
-        model = SubtitleModel(2)
-        changed, resets = [], []
-        model.dataChanged.connect(lambda *args: changed.append(True))
-        model.modelReset.connect(lambda: resets.append(True))
-        model.add(1, "one", "en")
-        model.translate(1, "一")
-        self.assertEqual(model.data(model.index(0), Qt.ItemDataRole.UserRole + 2), "一")
-        self.assertEqual(len(changed), 1)
-        self.assertFalse(resets)
-        model.add(2, "two", "en")
-        model.add(3, "three", "en")
-        model.translate(1, "late")
-        self.assertEqual(model.rowCount(), 2)
-        self.assertEqual(len(changed), 1)
+        changed = []
+        buffer = SubtitleBuffer(2, on_change=lambda: changed.append(True))
+        buffer.add(1, "one", "en")
+        buffer.translate(1, "一")
+        self.assertEqual(buffer.rows()[0]["translation"], "一")
+        self.assertEqual(len(changed), 2)
+        buffer.add(2, "two", "en")
+        buffer.add(3, "three", "en")
+        buffer.translate(1, "late")
+        self.assertEqual(len(buffer.rows()), 2)
+        self.assertEqual(len(changed), 4)
 
 
 class TranslationTests(unittest.TestCase):

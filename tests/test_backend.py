@@ -17,12 +17,12 @@ from unittest.mock import patch
 import numpy as np
 
 from livetrans import audio
+from livetrans.app.settings import engine_config, validate_config
 from livetrans.asr.whisper_local import LocalWhisper
 from livetrans.audio.base import TARGET_RATE, UnsupportedBackend, to_mono_16k
 from livetrans.audio.linux import LinuxBackend, ParecCapture, parse_blocks
 from livetrans.config import AppConfig
 from livetrans.transcriber import build_capture
-from livetrans.ui.settings import engine_config, validate_config
 from livetrans.worker import models
 from livetrans.worker.client import WorkerError, WorkerProcess, resolve_interpreter
 from livetrans.worker.protocol import ProtocolError, read_frame, write_frame
@@ -317,19 +317,19 @@ class ModelStoreTest(unittest.TestCase):
 
 class ModelManagerTest(unittest.TestCase):
     def setUp(self):
-        from PySide6.QtWidgets import QApplication
+        from livetrans.app.loop import Loop
 
-        self.qt = QApplication.instance() or QApplication([])
+        self.loop = Loop()
 
     def wait(self, manager):
         deadline = time.monotonic() + 5
         while manager.busy and time.monotonic() < deadline:
-            self.qt.processEvents()
+            self.loop.process_pending(0.005)
             time.sleep(0.005)
         self.assertFalse(manager.busy)
 
     def test_download_reports_progress_then_lists_the_environment(self):
-        from livetrans.ui.models import ModelManager
+        from livetrans.app.models import ModelManager
 
         requests, seen = [], []
 
@@ -355,8 +355,8 @@ class ModelManagerTest(unittest.TestCase):
             def kill(self):
                 pass
 
-        manager = ModelManager(worker_factory=Worker)
-        manager.changed.connect(lambda: seen.append((manager.state, manager.progress)))
+        manager = ModelManager(self.loop, worker_factory=Worker)
+        manager.on_change = lambda: seen.append((manager.state, manager.progress))
         manager.download("/env", "small")
         self.assertEqual(manager.state, "downloading")
         self.wait(manager)
@@ -367,7 +367,7 @@ class ModelManagerTest(unittest.TestCase):
         self.assertEqual((manager.directory, manager.error), ("/env/livetrans-models", ""))
 
     def test_failures_and_cancel_are_reported(self):
-        from livetrans.ui.models import ModelManager
+        from livetrans.app.models import ModelManager
 
         class Worker:
             def __init__(self, runtime):
@@ -379,7 +379,7 @@ class ModelManagerTest(unittest.TestCase):
             def stop(self):
                 pass
 
-        manager = ModelManager(worker_factory=Worker)
+        manager = ModelManager(self.loop, worker_factory=Worker)
         manager.refresh("/missing")
         self.wait(manager)
         self.assertEqual(manager.error, "无法读取模型：运行环境不存在")
