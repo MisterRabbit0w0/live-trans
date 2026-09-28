@@ -64,10 +64,15 @@ def validate_config(cfg: AppConfig) -> dict[str, str]:
 
 
 def engine_config(cfg: AppConfig) -> dict:
-    """Only changes to the active engine inputs require a restart."""
+    """Active engine inputs, grouped by the part of a running session they rebuild.
+
+    Only ``transcribe`` changes restart the session; the rest apply in place.
+    """
     data = asdict(cfg)
     data.pop("subtitle")
     data.pop("ui")
+    translate = data.pop("translate")
+    record = data.pop("record")
     if cfg.audio_source_mode == "system":
         data.pop("audio_process_name")
     else:
@@ -78,7 +83,7 @@ def engine_config(cfg: AppConfig) -> dict:
     else:
         for key in ("model", "device"):
             data["asr"].pop(key)
-    return data
+    return {"transcribe": data, "translate": translate, "record": record}
 
 
 class SettingsStore(QObject):

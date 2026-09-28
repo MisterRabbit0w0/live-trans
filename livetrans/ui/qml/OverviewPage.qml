@@ -16,6 +16,7 @@ ColumnLayout {
                 spacing: 10
                 AppText { text: appController.statusTitle; font.pixelSize: 22; font.weight: Font.DemiBold; Layout.fillWidth: true }
                 AppText { text: appController.statusDetail; color: Theme.secondary; Layout.fillWidth: true }
+                AppText { visible: appController.recording; text: "正在保存翻译记录"; color: Theme.accent; font.pixelSize: 12; Layout.fillWidth: true }
                 RowLayout {
                     Layout.topMargin: 2
                     spacing: 10

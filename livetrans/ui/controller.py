@@ -11,6 +11,7 @@ from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
 from ..config import AppConfig, config_dir
+from ..record.transcript import records_dir
 from .runtime import RuntimeCoordinator
 from .settings import SettingsStore, engine_config, validate_config
 from .subtitle_model import SubtitleModel
@@ -71,6 +72,8 @@ class AppController(QObject):
         for stage in ("audio", "asr", "translate"):
             if self._stages.get(stage) == "error":
                 return errors[stage] + "，请检查对应设置"
+        if self._stages.get("record") == "error":
+            return "记录文件无法写入，已停止记录；翻译不受影响。"
         return {
             "idle": "确认声音来源和模型后，点击开始翻译。",
             "starting": "正在加载模型并连接声音来源，请稍候。",
@@ -83,6 +86,11 @@ class AppController(QObject):
     @Property(bool, notify=changed)
     def busy(self):
         return self._state in ("starting", "stopping") or self._quitting
+
+    @Property(bool, notify=changed)
+    def recording(self):
+        return self.cfg.record.enabled and self._state in ("running", "paused") \
+            and self._stages.get("record") != "error"
 
     @Property(bool, notify=changed)
     def subtitleVisible(self):
@@ -175,14 +183,14 @@ class AppController(QObject):
             return
         self._begin_session(False)
 
-    def _begin_session(self, paused):
+    def _begin_session(self, paused, resume=False):
         self._state = "starting"
         self._stages = {}
         self._device = ""
         self._model = ""
         self.subtitles.clear()
         self._subtitle_visible = True
-        self._generation = self.runtime.start(self.cfg, paused)
+        self._generation = self.runtime.start(self.cfg, paused, resume)
         self.changed.emit()
 
     @Slot()
@@ -228,7 +236,7 @@ class AppController(QObject):
             }.get(error.errno, "文件系统写入失败")
             self._message(f"无法保存配置：{reason}。修改已保留。", True)
             return
-        restart = engine_config(candidate) != engine_config(self.cfg)
+        before, after = engine_config(self.cfg), engine_config(candidate)
         was_paused = self._state == "paused"
         was_active = self._state in ("running", "paused")
         self.cfg = candidate
@@ -237,9 +245,14 @@ class AppController(QObject):
         self.subtitles.set_limit(candidate.subtitle.max_lines)
         self.configApplied.emit(candidate)
         self._message("设置已保存。")
-        if restart and was_active:
+        if not was_active or before == after:
+            return
+        if before["transcribe"] != after["transcribe"]:
             self._restarting = True
-            self._begin_session(was_paused)
+            self._begin_session(was_paused, resume=True)
+        else:
+            self.runtime.reconfigure(candidate)
+            self._message("设置已保存并应用。")
 
     @Slot(int)
     def adjustFont(self, delta):
@@ -363,6 +376,17 @@ class AppController(QObject):
     @Slot()
     def openLogDirectory(self):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(config_dir())))
+
+    @Slot()
+    def openRecordDirectory(self):
+        directory = records_dir()
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            log.warning("记录目录不可用 (%s)", type(error).__name__)
+            self._message("无法打开记录文件夹。", True)
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
 
     @Slot()
     def requestQuit(self):

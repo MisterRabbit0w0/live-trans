@@ -12,6 +12,17 @@ ColumnLayout {
     }
     Panel {
         Layout.fillWidth: true
+        AppText { text: "翻译记录"; font.pixelSize: 16; font.weight: Font.DemiBold }
+        ToggleSetting { path: "record.enabled"; label: "保存翻译记录"; hint: "逐句保存原文、译文和时间，便于回看和整理纪要。只保存在本机，不保存音频。" }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 16
+            AppText { text: "每次开始翻译生成一个记录文件，修改识别设置后继续写入同一文件。"; font.pixelSize: 12; color: Theme.secondary; Layout.fillWidth: true }
+            ActionButton { text: "打开记录文件夹"; symbol: "folder"; quiet: true; onClicked: appController.openRecordDirectory() }
+        }
+    }
+    Panel {
+        Layout.fillWidth: true
         AppText { text: "外观与辅助显示"; font.pixelSize: 16; font.weight: Font.DemiBold }
         ChoiceSetting {
             path: "ui.theme"; label: "主题"

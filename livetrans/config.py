@@ -65,6 +65,11 @@ class UiConfig:
 
 
 @dataclass
+class RecordConfig:
+    enabled: bool = False  # 把原文、译文和时间保存到 records/，不含音频
+
+
+@dataclass
 class AppConfig:
     audio_source_mode: str = "system"  # system = 整个系统 | process = 指定软件
     audio_device_index: int = -1  # system 模式：-1 = 默认输出设备的环回
@@ -73,6 +78,7 @@ class AppConfig:
     translate: TranslateConfig = field(default_factory=TranslateConfig)
     subtitle: SubtitleStyle = field(default_factory=SubtitleStyle)
     ui: UiConfig = field(default_factory=UiConfig)
+    record: RecordConfig = field(default_factory=RecordConfig)
     # VAD 参数
     vad_silence_ms: int = 500  # 停顿多久切句
     vad_max_segment_s: float = 8.0  # 最长强制切断
@@ -119,7 +125,7 @@ class AppConfig:
             ):
                 setattr(target, key, value)
 
-        for section_name in ("asr", "translate", "subtitle", "ui"):
+        for section_name in ("asr", "translate", "subtitle", "ui", "record"):
             section_data = data.get(section_name)
             if isinstance(section_data, dict):
                 section = getattr(cfg, section_name)

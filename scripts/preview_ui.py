@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 class PreviewPipeline:
-    def __init__(self, cfg, emit, cancel):
+    def __init__(self, cfg, emit, cancel, **context):
         self.emit, self.cancel = emit, cancel
 
     def start(self, paused=False):
@@ -30,6 +30,9 @@ class PreviewPipeline:
         self.cancel.set()
 
     def set_paused(self, paused):
+        pass
+
+    def reconfigure(self, cfg):
         pass
 
 
