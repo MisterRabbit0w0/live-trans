@@ -62,8 +62,8 @@ class VadSegmenter:
         silence_ms: int = 500,
         max_segment_s: float = 8.0,
         min_speech_ms: int = 250,
-        start_threshold: float = 0.5,
-        end_threshold: float = 0.35,
+        start_threshold: float = 0.35,
+        end_threshold: float | None = None,
         pre_roll_ms: int = 200,
         long_segment_s: float = 5.0,
         lookback_s: float = 1.5,
@@ -73,8 +73,12 @@ class VadSegmenter:
         self._silence_frames = max(1, int(silence_ms * SAMPLE_RATE / 1000 / FRAME_SIZE))
         self._max_frames = max(1, int(max_segment_s * SAMPLE_RATE / FRAME_SIZE))
         self._min_speech_frames = max(1, int(min_speech_ms * SAMPLE_RATE / 1000 / FRAME_SIZE))
-        self._start_th = start_threshold
-        self._end_th = end_threshold
+        self._start_th = float(start_threshold)
+        self._end_th = (
+            float(end_threshold)
+            if end_threshold is not None
+            else max(0.12, self._start_th * 0.65)
+        )
         self._pre_roll_frames = max(1, int(pre_roll_ms * SAMPLE_RATE / 1000 / FRAME_SIZE))
         self._long_frames = max(1, int(long_segment_s * SAMPLE_RATE / FRAME_SIZE))
         self._lookback_frames = max(2, int(lookback_s * SAMPLE_RATE / FRAME_SIZE))
@@ -168,3 +172,57 @@ class VadSegmenter:
                 break
         if head:
             self._on_segment(np.concatenate(head))
+class ConservativeAGC:
+    """保守型流式自适应音频增益控制器。
+
+    设计原则（四大安全防线）：
+    1. 底噪门限冻结：低于 noise_gate_rms (-60 dBFS) 时增益不放大并缓慢归一，绝不放大底噪。
+    2. 快降慢升（Fast attack, smooth decay）：大音量极速压低（Attack = 0.8），
+       小音量平缓抬升（Decay = 0.05）。
+    4. 软限幅硬顶保护：最终信号软限制，保证采样在 [-0.98, +0.98] 之内，杜绝溢出爆音。
+    """
+
+    def __init__(
+        self,
+        target_peak: float = 0.35,
+        max_gain: float = 6.0,
+        noise_gate_rms: float = 0.001,
+        attack_rate: float = 0.8,
+        decay_rate: float = 0.05,
+    ):
+        self.target_peak = target_peak
+        self.max_gain = max_gain
+        self.noise_gate_rms = noise_gate_rms
+        self.attack_rate = attack_rate
+        self.decay_rate = decay_rate
+        self.current_gain = 1.0
+
+    def reset(self) -> None:
+        self.current_gain = 1.0
+
+    def process(self, chunk: np.ndarray) -> np.ndarray:
+        if len(chunk) == 0:
+            return chunk
+        peak = float(np.max(np.abs(chunk)))
+        rms = float(np.sqrt(np.mean(chunk**2)))
+
+        # 纯静音或微弱底噪：不盲目放大，增益平缓回落至 1.0
+        if rms < self.noise_gate_rms or peak < 1e-4:
+            self.current_gain += (1.0 - self.current_gain) * self.decay_rate
+            return chunk * self.current_gain
+
+        # 计算当前目标增益，受限在 [1.0, max_gain]
+        desired_gain = self.target_peak / peak
+        desired_gain = max(1.0, min(self.max_gain, desired_gain))
+
+        # 快降慢升平滑过渡
+        if desired_gain < self.current_gain:
+            self.current_gain += (desired_gain - self.current_gain) * self.attack_rate
+        else:
+            self.current_gain += (desired_gain - self.current_gain) * self.decay_rate
+
+        out = chunk * self.current_gain
+        max_val = np.max(np.abs(out))
+        if max_val > 0.95:
+            out = np.clip(out, -0.98, 0.98)
+        return out

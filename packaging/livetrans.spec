@@ -9,6 +9,11 @@ datas = collect_data_files("livetrans")
 datas += [(str(root / "LICENSE"), "."), (str(root / "THIRD_PARTY_NOTICES.md"), ".")]
 datas += [(str(generated / "licenses"), "licenses")]
 datas += [(str(generated / "build-info.json"), ".")]
+# Plain worker sources let an external Python runtime run the model process.
+datas += [(str(root / "livetrans" / "__init__.py"), "runtime-src/livetrans")]
+datas += [(str(root / "livetrans" / "worker" / name), "runtime-src/livetrans/worker")
+          for name in ("__init__.py", "__main__.py", "protocol.py", "server.py", "engine.py",
+                       "models.py")]
 for distribution in ("faster-whisper", "ctranslate2", "huggingface-hub", "tokenizers"):
     datas += copy_metadata(distribution)
 
@@ -17,11 +22,13 @@ analysis = Analysis(
     pathex=[str(root)],
     binaries=collect_dynamic_libs("ctranslate2"),
     datas=datas,
-    hiddenimports=["PySide6.QtSvg", "PySide6.QtQuick", "PySide6.QtQuickControls2"],
+    hiddenimports=["PySide6.QtSvg", "PySide6.QtQuick", "PySide6.QtQuickControls2",
+                   "livetrans.worker.server", "livetrans.worker.engine",
+                   "livetrans.audio.windows.loopback", "livetrans.audio.windows.process_loopback"],
     hookspath=[str(root / "packaging" / "hooks")],
     # CPU distribution. QtQml's official hook collects QML modules and plugins.
     excludes=["torch", "tensorflow", "matplotlib", "IPython", "PyQt5", "PyQt6",
-              "PySide2", "nvidia"],
+              "PySide2", "nvidia", "livetrans.audio.linux", "livetrans.audio.macos"],
     noarchive=False,
     optimize=1,
 )

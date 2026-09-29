@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.metadata as metadata
-import io
+import importlib.util
 import json
 import platform
 import re
@@ -30,29 +30,18 @@ def app_version():
 
 
 def prepare_metadata(version):
-    from PIL import Image
-    from PySide6.QtCore import QBuffer, QIODevice, Qt
-    from PySide6.QtGui import QImage, QPainter
-    from PySide6.QtSvg import QSvgRenderer
+    # Qt lives only in the build environment; packaging/icon.py does the render.
+    spec = importlib.util.spec_from_file_location(
+        "livetrans_icon", ROOT / "packaging" / "icon.py")
+    icon = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(icon)
 
     generated = ROOT / "build" / "release-metadata"
     if generated.exists():
         shutil.rmtree(generated)
     generated.mkdir(parents=True, exist_ok=True)
-    renderer = QSvgRenderer(str(ROOT / "livetrans" / "assets" / "livetrans.svg"))
-    if not renderer.isValid():
-        raise SystemExit("Invalid application SVG")
-    image = QImage(256, 256, QImage.Format.Format_ARGB32)
-    image.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(image)
-    renderer.render(painter)
-    painter.end()
-    buffer = QBuffer()
-    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-    image.save(buffer, "PNG")
-    Image.open(io.BytesIO(bytes(buffer.data()))).save(
-        generated / "livetrans.ico", sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)],
-    )
+    icon.write_icon(ROOT / "livetrans" / "assets" / "livetrans.svg",
+                    generated / "livetrans.ico")
     numbers = tuple(map(int, version.split("."))) + (0,)
     (generated / "version.txt").write_text(
         "VSVersionInfo(ffi=FixedFileInfo("

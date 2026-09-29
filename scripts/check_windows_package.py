@@ -21,7 +21,11 @@ def main():
     required |= {"livetrans/assets/silero_vad.onnx", "livetrans/assets/livetrans.svg",
                  "LICENSE", "THIRD_PARTY_NOTICES.md", "build-info.json",
                  "licenses/upstream/LGPL-3.0-only.txt", "licenses/upstream/GPL-3.0-only.txt",
-                 "licenses/upstream/Silero-VAD-MIT.txt", "licenses/Python-LICENSE.txt"}
+                 "licenses/upstream/Silero-VAD-MIT.txt", "licenses/Python-LICENSE.txt",
+                 "runtime-src/livetrans/__init__.py"}
+    required |= {f"runtime-src/livetrans/worker/{name}"
+                 for name in ("__init__.py", "__main__.py", "protocol.py", "server.py",
+                              "engine.py", "models.py")}
     entries = {path.relative_to(internal).as_posix() for path in internal.rglob("*")
                if path.is_file()}
     onefile = CArchiveReader(str(directory / "LiveTrans-standalone.exe"))

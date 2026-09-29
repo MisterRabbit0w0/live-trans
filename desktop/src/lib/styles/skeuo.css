@@ -1,0 +1,281 @@
+/* Pure flat design system for LiveTrans: crisp boundaries, clean surfaces,
+   meticulous concentric radiuses, and restrained blur on elevated overlays only. */
+
+/* ---- Panel / Card (formerly .glass) ---------------------------------- */
+.glass,
+.lt-panel,
+.lt-card {
+  position: relative;
+  border-radius: var(--lt-radius-card);
+  background: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  box-shadow: none;
+  backdrop-filter: none;
+  transition:
+    background-color var(--lt-fast) var(--lt-ease),
+    border-color var(--lt-fast) var(--lt-ease);
+}
+
+/* Eliminate skeuomorphic gradient rims and liquid sheens */
+.glass::before,
+.glass::after,
+.lt-panel::before,
+.lt-panel::after,
+.lt-card::before,
+.lt-card::after {
+  display: none !important;
+}
+
+html[data-theme="dark"] .glass,
+html[data-theme="dark"] .lt-panel,
+html[data-theme="dark"] .lt-card {
+  background: var(--md-sys-color-surface-container);
+  border-color: var(--md-sys-color-outline-variant);
+  box-shadow: none;
+}
+
+/* Native Acrylic: subtle translucent surface wash with clean flat outline */
+html[data-material="native"]:not([data-theme="dark"]) .glass,
+html[data-material="native"]:not([data-theme="dark"]) .lt-panel,
+html[data-material="native"]:not([data-theme="dark"]) .lt-card {
+  background: color-mix(
+    in oklab,
+    var(--md-sys-color-surface-container-low) 88%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklab,
+    var(--md-sys-color-outline-variant) 80%,
+    transparent
+  );
+}
+
+html[data-material="native"][data-theme="dark"] .glass,
+html[data-material="native"][data-theme="dark"] .lt-panel,
+html[data-material="native"][data-theme="dark"] .lt-card {
+  background: color-mix(
+    in oklab,
+    var(--md-sys-color-surface-container) 85%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklab,
+    var(--md-sys-color-outline-variant) 70%,
+    transparent
+  );
+}
+
+/* Solid mode and high contrast */
+html[data-material="solid"] .glass,
+html[data-contrast="high"] .glass,
+html[data-material="solid"] .lt-panel,
+html[data-contrast="high"] .lt-panel,
+html[data-material="solid"] .lt-card,
+html[data-contrast="high"] .lt-card {
+  background: var(--md-sys-color-surface-container-lowest);
+  border-color: var(--md-sys-color-outline);
+  box-shadow: none;
+}
+
+/* ---- Restrained Blur / Glass for specific floating surfaces ---------- */
+.lt-restrained-blur {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* ---- Secondary / Surface button (.lt-raised) ------------------------- */
+.lt-raised {
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--lt-radius-control);
+  box-shadow: none;
+  transition:
+    background-color var(--lt-fast) var(--lt-ease),
+    border-color var(--lt-fast) var(--lt-ease),
+    color var(--lt-fast) var(--lt-ease);
+}
+
+.lt-raised:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-container-highest);
+  border-color: var(--md-sys-color-outline);
+  box-shadow: none;
+}
+
+.lt-raised:active:not(:disabled) {
+  background: var(--md-sys-color-surface-container);
+  border-color: var(--md-sys-color-outline);
+  box-shadow: none;
+  transform: none;
+}
+
+/* ---- Primary button (.lt-primary) ------------------------------------ */
+.lt-primary {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border: 1px solid transparent;
+  border-radius: var(--lt-radius-control);
+  box-shadow: none;
+  transition:
+    background-color var(--lt-fast) var(--lt-ease),
+    border-color var(--lt-fast) var(--lt-ease),
+    opacity var(--lt-fast) var(--lt-ease);
+}
+
+.lt-primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--md-sys-color-primary) 88%, white);
+  box-shadow: none;
+  filter: none;
+}
+
+html[data-theme="dark"] .lt-primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--md-sys-color-primary) 90%, white);
+}
+
+.lt-primary:active:not(:disabled) {
+  background: color-mix(in oklab, var(--md-sys-color-primary) 82%, black);
+  box-shadow: none;
+  transform: none;
+}
+
+html[data-contrast="high"] .lt-primary {
+  background: var(--md-sys-color-primary);
+  border-color: var(--md-sys-color-on-primary);
+}
+
+/* ---- Quiet button (.lt-quiet) ---------------------------------------- */
+.lt-quiet {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--lt-radius-control);
+  box-shadow: none;
+  transition:
+    background-color var(--lt-fast) var(--lt-ease),
+    color var(--lt-fast) var(--lt-ease);
+}
+
+.lt-quiet::before {
+  display: none !important;
+}
+
+.lt-quiet:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: none;
+}
+
+.lt-quiet:active:not(:disabled) {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: none;
+}
+
+/* ---- Flat field (.lt-field) ------------------------------------------ */
+.lt-field {
+  background: var(--md-sys-color-surface-container-lowest);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--lt-radius-control);
+  box-shadow: none;
+  transition:
+    border-color var(--lt-fast) var(--lt-ease),
+    background-color var(--lt-fast) var(--lt-ease);
+}
+
+html[data-theme="dark"] .lt-field {
+  background: var(--md-sys-color-surface-container-lowest);
+  border-color: var(--md-sys-color-outline-variant);
+  box-shadow: none;
+}
+
+.lt-field:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: var(--md-sys-color-outline);
+}
+
+.lt-field:focus-within,
+.lt-field:focus {
+  border-color: var(--md-sys-color-primary);
+  outline: none;
+  box-shadow: 0 0 0 1px var(--md-sys-color-primary);
+}
+
+.lt-field.lt-error {
+  border-color: var(--md-sys-color-error);
+  box-shadow: 0 0 0 1px var(--md-sys-color-error);
+}
+
+html[data-contrast="high"] .lt-field {
+  background: var(--md-sys-color-surface-container-lowest);
+  border-color: var(--md-sys-color-outline);
+  box-shadow: none;
+}
+
+/* ---- Flat Knob (.lt-knob) -------------------------------------------- */
+.lt-knob {
+  border-radius: var(--lt-radius-full);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  box-shadow: none;
+}
+
+/* ---- Nav item (.lt-nav-item) ----------------------------------------- */
+.lt-nav-item {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--lt-radius-control);
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  transition:
+    background-color var(--lt-fast) var(--lt-ease),
+    color var(--lt-fast) var(--lt-ease);
+}
+
+.lt-nav-item::before {
+  display: none !important;
+}
+
+.lt-nav-item:not([aria-current="page"]):hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.lt-nav-item[aria-current="page"] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+html[data-contrast="high"] .lt-nav-item[aria-current="page"] {
+  outline: 1px solid var(--md-sys-color-outline);
+}
+
+/* ---- Flat Status Indicator (.lt-led) --------------------------------- */
+.lt-led {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--lt-radius-full);
+  background: var(--md-sys-color-outline);
+  box-shadow: none;
+  flex: none;
+}
+
+.lt-led[data-state="running"] {
+  background: var(--lt-success);
+  box-shadow: none;
+}
+
+.lt-led[data-state="paused"] {
+  background: var(--md-sys-color-tertiary);
+  box-shadow: none;
+}
+
+.lt-led[data-state="error"] {
+  background: var(--md-sys-color-error);
+  box-shadow: none;
+}
+
+.lt-led[data-state="starting"],
+.lt-led[data-state="stopping"] {
+  background: var(--md-sys-color-primary);
+  box-shadow: none;
+}

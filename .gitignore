@@ -40,3 +40,8 @@ gitleaks-report.*
 
 # 桌面快捷方式
 *.lnk
+
+# Tauri 桌面端（desktop/）
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

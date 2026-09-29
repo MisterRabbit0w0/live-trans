@@ -1,4 +1,4 @@
-"""Verify that wheel and sdist include QML, the application icon and VAD model."""
+"""Verify that wheel and sdist include the application icon and VAD model."""
 from __future__ import annotations
 
 import argparse
@@ -12,10 +12,7 @@ def main():
     parser.add_argument("--directory", type=Path, help="artifact directory (default: dist)")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    required = {p.relative_to(root).as_posix()
-                for p in (root / "livetrans/ui/qml").iterdir() if p.is_file()}
-    required.add("livetrans/assets/silero_vad.onnx")
-    required.add("livetrans/assets/livetrans.svg")
+    required = {"livetrans/assets/silero_vad.onnx", "livetrans/assets/livetrans.svg"}
     directory = args.directory or root / "dist"
     artifacts = sorted(directory.glob("*.whl"))
     sources = sorted(directory.glob("*.tar.gz"))
@@ -32,7 +29,7 @@ def main():
         if path.suffix != ".whl":
             build_files = {"packaging/livetrans.spec", "packaging/windows.iss",
                            "packaging/requirements-windows.lock", "packaging/entrypoint.py",
-                           "packaging/hooks/hook-PySide6.QtQml.py", "scripts/build_windows.py",
+                           "scripts/build_windows.py",
                            "scripts/check_windows_package.py", "scripts/release_artifacts.py",
                            "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md"}
             missing |= build_files - entries
@@ -41,7 +38,7 @@ def main():
                 missing.add(notice)
         if missing:
             raise SystemExit(f"{path.name}: missing {sorted(missing)}")
-        print(f"{path.name}: all {len(required)} UI / model resources present")
+        print(f"{path.name}: all {len(required)} bundled resources present")
 
 
 if __name__ == "__main__":
