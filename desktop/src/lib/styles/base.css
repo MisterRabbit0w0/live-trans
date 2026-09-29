@@ -1,0 +1,198 @@
+/* Base typography, window backdrop modes and motion tokens. */
+
+:root {
+  --lt-fast: 150ms;
+  --lt-duration: 220ms;
+  --lt-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --lt-font:
+    "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC",
+    "Hiragino Sans GB", "Noto Sans CJK SC", system-ui, sans-serif;
+
+  /* Systematic, concentric radius hierarchy */
+  --lt-radius-window: 14px;
+  --lt-radius-card: 12px;
+  --lt-radius-popup: 10px;
+  --lt-radius-control: 8px;
+  --lt-radius-sm: 6px;
+  --lt-radius-xs: 4px;
+  --lt-radius-full: 9999px;
+}
+
+html[data-motion="reduce"] {
+  --lt-fast: 0ms;
+  --lt-duration: 0ms;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--lt-font);
+  font-size: 14px;
+  color: var(--md-sys-color-on-surface);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Window backdrop modes — set by appearance.svelte.ts on <html>. */
+
+/* Window backdrop modes — clean flat surfaces with restrained acrylic when available. */
+html[data-material="css"] body,
+html[data-material="solid"] body {
+  background: var(--md-sys-color-surface-container-low);
+}
+
+/* Acrylic: subtle translucent surface wash over system compositor */
+html[data-material="native"] body {
+  background: color-mix(
+    in oklab,
+    var(--md-sys-color-surface) 65%,
+    transparent
+  );
+}
+html[data-material="native"][data-theme="dark"] body {
+  background: color-mix(
+    in oklab,
+    var(--md-sys-color-surface) 75%,
+    transparent
+  );
+}
+
+
+/* The subtitle window is fully transparent; it paints its own backdrop. */
+html[data-window="subtitle"] body {
+  background: transparent !important;
+}
+html[data-window="subtitle"] body::before {
+  display: none;
+}
+
+::selection {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+/* Visible focus ring on every interactive element. */
+:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+input:focus-visible,
+[contenteditable]:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--md-sys-color-outline-variant);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--md-sys-color-outline);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner,
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] *::before,
+html[data-motion="reduce"] *::after {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+/* Forced colors: strip every effect, keep semantic system colors. */
+@media (forced-colors: active) {
+  html body::before {
+    display: none;
+  }
+  * {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    text-shadow: none !important;
+    background-image: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+  :focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  /* Buttons need boundaries once gradients and shadows are stripped. */
+  .lt-btn,
+  .lt-icon-btn {
+    background-color: ButtonFace !important;
+    color: ButtonText !important;
+    border: 1px solid ButtonBorder !important;
+  }
+  .lt-btn:disabled,
+  .lt-icon-btn:disabled {
+    color: GrayText !important;
+    border-color: GrayText !important;
+  }
+  .lt-quiet,
+  .lt-icon-btn.lt-quiet {
+    background-color: transparent !important;
+    border-color: transparent !important;
+  }
+  .lt-quiet:hover:not(:disabled),
+  .lt-icon-btn.lt-quiet:hover:not(:disabled),
+  .lt-quiet:focus-visible,
+  .lt-icon-btn.lt-quiet:focus-visible {
+    border-color: ButtonBorder !important;
+  }
+  .lt-btn::before,
+  .lt-icon-btn::before {
+    display: none !important;
+  }
+
+  /* Selected navigation stays visible. forced-color-adjust:none suppresses
+     Chromium's opaque text backplate, which otherwise swallows the label. */
+  .lt-nav-item {
+    border: 1px solid transparent;
+  }
+  .lt-nav-item[aria-current="page"] {
+    forced-color-adjust: none;
+    background: Highlight !important;
+    color: HighlightText !important;
+    border-color: Highlight !important;
+    outline: none;
+  }
+  .lt-nav-item[aria-current="page"] .icon {
+    color: HighlightText !important;
+  }
+  .lt-nav-item::before {
+    display: none !important;
+  }
+
+  /* Status LED: a flat disc — state Highlight when active. */
+  .lt-led {
+    background-color: ButtonText !important;
+    border: 1px solid ButtonText;
+  }
+  .lt-led[data-state="running"] {
+    background-color: Highlight !important;
+  }
+
+  /* Domed knobs would vanish without their gradient. */
+  .lt-knob {
+    background: ButtonText !important;
+  }
+  .lt-field {
+    border-color: ButtonBorder !important;
+  }
+}

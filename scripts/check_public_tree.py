@@ -63,7 +63,8 @@ def inspect_file(name: str, data: bytes):
     }:
         return
     for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
-        if path.suffix.lower() == ".lock" and not line.lstrip().startswith("#"):
+        is_pip_lock = path.suffix.lower() == ".lock" and path.name != "Cargo.lock"
+        if is_pip_lock and not line.lstrip().startswith("#"):
             dependency = re.split(r"\s+#", line, maxsplit=1)[0].strip()
             for rule, pattern in LOCK_PATTERNS.items():
                 if pattern.search(dependency):

@@ -4,11 +4,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from livetrans.config import AppConfig
-from livetrans.pipeline import build_translator
+from livetrans.translate.stage import build_translator
 
 cfg = AppConfig.load()
 print(f"翻译端点: {cfg.translate.base_url}  模型: {cfg.translate.model}")
-tr = build_translator(cfg)
+tr = build_translator(cfg.translate)
 for text, lang in [
     ("Alright chat, we're gonna try this boss one more time, wish me luck.", "en"),
     ("えっとね、今日はみんなとゲームやろうかなって思ってます！", "ja"),

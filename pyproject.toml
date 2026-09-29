@@ -10,24 +10,32 @@ authors = [{ name = "MisterRabbit0w0" }]
 keywords = ["translation", "live", "subtitle", "whisper", "asr", "streaming"]
 classifiers = [
     "Environment :: Win32 (MS Windows)",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "numpy",
-    "PyAudioWPatch>=0.2.12.7",
     "faster-whisper>=1.1.0",
-    "PySide6>=6.8",
     "httpx>=0.27",
     "onnxruntime>=1.18",
-    "pycaw>=20230407",
+    # Windows: WASAPI loopback and Process Loopback API
+    "PyAudioWPatch>=0.2.12.7; sys_platform == 'win32'",
+    "pycaw>=20230407; sys_platform == 'win32'",
+    "comtypes>=1.4; sys_platform == 'win32'",
+    "psutil>=5.9; sys_platform == 'win32'",
+    # macOS: ScreenCaptureKit (Linux uses the system pactl/parec commands)
+    "pyobjc-framework-ScreenCaptureKit>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-CoreMedia>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]
 cuda = [
-    "nvidia-cublas-cu12",
-    "nvidia-cudnn-cu12>=9",
+    "nvidia-cublas-cu12; sys_platform != 'darwin'",
+    "nvidia-cudnn-cu12>=9; sys_platform != 'darwin'",
 ]
 
 [project.urls]
@@ -35,7 +43,7 @@ Homepage = "https://github.com/MisterRabbit0w0/live-trans"
 Repository = "https://github.com/MisterRabbit0w0/live-trans"
 
 [project.scripts]
-livetrans = "livetrans.main:main"
+livetrans-core = "livetrans.app.server:main"
 
 [build-system]
 requires = ["setuptools>=77"]
@@ -45,7 +53,7 @@ build-backend = "setuptools.build_meta"
 include = ["livetrans*"]
 
 [tool.setuptools.package-data]
-livetrans = ["assets/*.onnx", "assets/*.svg", "ui/qml/*.qml", "ui/qml/qmldir"]
+livetrans = ["assets/*.onnx", "assets/*.svg"]
 
 [tool.ruff]
 target-version = "py310"
@@ -53,4 +61,4 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
-ignore = ["B008"]  # 允许在默认参数中调用（Qt 信号等场景）
+ignore = ["B008"]  # 允许在默认参数中调用（回调默认值等场景）

@@ -1,0 +1,28 @@
+{
+  "name": "livetrans-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev --dev-url http://localhost:5173"
+  },
+  "dependencies": {
+    "@material/material-color-utilities": "0.4.0",
+    "@tauri-apps/api": "2.11.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "@tauri-apps/cli": "2.11.5",
+    "playwright": "1.63.0",
+    "svelte": "5.57.1",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
+  }
+}

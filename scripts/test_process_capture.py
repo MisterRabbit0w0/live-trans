@@ -1,4 +1,4 @@
-"""验证按进程捕获：启动一个播放 wav 的子进程，只捕获它的声音。"""
+"""验证按进程捕获（Windows）：启动一个播放 wav 的子进程，只捕获它的声音。"""
 import subprocess
 import sys
 import time
@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from livetrans.audio.process_capture import ProcessLoopbackCapture, list_audio_processes
+from livetrans.audio.windows.process_loopback import ProcessLoopbackCapture, list_audio_processes
 
 wav = Path(__file__).parent / "capture_test.wav"
 assert wav.exists(), "先运行 test_capture.py 生成 capture_test.wav"
