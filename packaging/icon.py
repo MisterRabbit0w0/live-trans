@@ -11,7 +11,8 @@ from pathlib import Path
 
 
 def write_icon(svg_path: Path, ico_path: Path) -> None:
-    fallback_ico = Path(__file__).resolve().parents[1] / "desktop" / "src-tauri" / "icons" / "icon.ico"
+    icons_dir = Path(__file__).resolve().parents[1] / "desktop" / "src-tauri" / "icons"
+    fallback_ico = icons_dir / "icon.ico"
     try:
         from PIL import Image
         from PySide6.QtCore import QBuffer, QIODevice, Qt
