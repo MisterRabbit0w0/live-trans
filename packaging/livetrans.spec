@@ -22,13 +22,12 @@ analysis = Analysis(
     pathex=[str(root)],
     binaries=collect_dynamic_libs("ctranslate2"),
     datas=datas,
-    hiddenimports=["PySide6.QtSvg", "PySide6.QtQuick", "PySide6.QtQuickControls2",
-                   "livetrans.worker.server", "livetrans.worker.engine",
+    hiddenimports=["livetrans.worker.server", "livetrans.worker.engine",
                    "livetrans.audio.windows.loopback", "livetrans.audio.windows.process_loopback"],
-    hookspath=[str(root / "packaging" / "hooks")],
-    # CPU distribution. QtQml's official hook collects QML modules and plugins.
+    hookspath=[],
+    # CPU distribution without legacy UI frameworks.
     excludes=["torch", "tensorflow", "matplotlib", "IPython", "PyQt5", "PyQt6",
-              "PySide2", "nvidia", "livetrans.audio.linux", "livetrans.audio.macos"],
+              "PySide2", "PySide6", "nvidia", "livetrans.audio.linux", "livetrans.audio.macos"],
     noarchive=False,
     optimize=1,
 )
