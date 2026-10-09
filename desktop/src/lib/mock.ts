@@ -164,7 +164,7 @@ function refreshModels() {
   setTimeout(() => {
     state.models.state = "idle";
     state.models.busy = false;
-    state.models.directory = "C:\\Users\\demo\\LiveTrans\\runtime\\models";
+    state.models.directory = "D:\\LiveTrans\\runtime\\models";
     state.models.writable = true;
     state.models.recommended = "large-v3-turbo";
     state.models.autoModel = "large-v3-turbo";

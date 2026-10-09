@@ -11,8 +11,9 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
-TEXT_SUFFIXES = {".py", ".qml", ".md", ".toml", ".yml", ".yaml", ".json", ".txt",
-                 ".bat", ".ps1", ".iss", ".spec", ".svg", ".in", ".lock"}
+TEXT_SUFFIXES = {".py", ".md", ".toml", ".yml", ".yaml", ".json", ".txt",
+                 ".bat", ".ps1", ".iss", ".spec", ".svg", ".in", ".lock",
+                 ".ts", ".svelte", ".js", ".css", ".html", ".rs"}
 PRIVATE_PARTS = {".venv", ".venv-build", ".cache", "__pycache__", "dist", "build",
                  ".idea", ".vscode"}
 SECRET_VALUE = re.compile(
@@ -59,7 +60,7 @@ def inspect_file(name: str, data: bytes):
             or path.suffix.lower() in {".log", ".wav", ".pem", ".key", ".pfx", ".p12"}):
         yield "private-file", 0
     if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in {
-        "LICENSE", ".gitignore", ".gitattributes", "qmldir",
+        "LICENSE", ".gitignore", ".gitattributes",
     }:
         return
     for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
