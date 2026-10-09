@@ -15,7 +15,7 @@ python -m venv .venv-build
 
 `dist/windows/` 保存最终产物。再次构建前移走这个目录中的旧产物，脚本会拒绝混合新旧版本。`build/frozen/` 是 PyInstaller 中间输出，不用于直接上传 Release。
 
-包内包含 QML、图标、Silero VAD、CPU 推理依赖、Qt QML 插件、许可证和 `build-info.json`。Qt 插件按应用的 QML 导入依赖收集，避免把未使用的可选模块一起带入。构建后读取目录和单文件 EXE 的归档目录，检查资源完整性；该检查不等同于运行验证。
+包内包含冻结的 Python 核心、SVG/ICO 图标、Silero VAD、CPU 推理依赖、许可证和 `build-info.json`。PySide6 只存在于构建环境，用于构建期渲染图标，不进入产物。构建后读取目录和单文件 EXE 的归档目录，检查资源完整性；该检查不等同于运行验证。
 
 单文件 EXE 内置依赖，需要先解压到临时目录。便携版启动时可直接加载旁边的动态库，日常使用优先选择便携版或安装版。三种形式共用 `%APPDATA%\livetrans` 中的配置。
 
@@ -68,6 +68,6 @@ python scripts/check_public_tree.py --staged
 ## 实现依据
 
 - [PyInstaller spec 与两种打包形式](https://pyinstaller.org/en/stable/spec-files.html)
-- [Qt QML 导入扫描工具](https://doc.qt.io/qt-6/qtqml-tooling-qmlimportscanner.html)
+- [Tauri 打包配置](https://v2.tauri.app/reference/config/)
 - [Inno Setup 非管理员安装](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm)
 - [Gitleaks 使用与输出脱敏](https://github.com/gitleaks/gitleaks)

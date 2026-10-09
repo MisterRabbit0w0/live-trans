@@ -67,8 +67,6 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 25
     env:
-      QT_QPA_PLATFORM: offscreen
-      QT_QUICK_BACKEND: software
       HF_HUB_OFFLINE: "1"
       PYTHONUTF8: "1"
     steps:
@@ -86,5 +84,5 @@ jobs:
           python -m pip install --require-hashes -r packaging/requirements-windows.lock
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install --no-deps --no-build-isolation -e .
-      - name: Offline lifecycle and QML interaction tests
+      - name: Offline lifecycle and pipeline regression tests
         run: python -m unittest discover -s tests -v
