@@ -1,6 +1,6 @@
 [project]
 name = "livetrans"
-version = "0.1.0"
+version = "0.2.0"
 description = "实时直播翻译：捕获系统音频，本地/云端语音识别 + 翻译，悬浮窗双语字幕"
 readme = "README.md"
 requires-python = ">=3.10"
