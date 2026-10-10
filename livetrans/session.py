@@ -40,9 +40,11 @@ class Session:
         self._ids = ids if ids is not None else itertools.count(1)
         self._recorder = recorder
         self._translator_factory = translator_factory
+        self._record_files: dict[int, object] = {}
         self._transcriber = Transcriber(
             cfg, self._on_speech, self._report, self._cancel,
-            asr_factory=asr_factory, capture_factory=capture_factory, vad_factory=vad_factory,
+            asr_factory=asr_factory, capture_factory=capture_factory,
+            vad_factory=vad_factory, tag_factory=self._record_tag,
         )
         self._translation: TranslationStage | None = None
         self._retired: list[TranslationStage] = []
@@ -81,16 +83,39 @@ class Session:
                 self.stop()
 
     def stop(self):
-        """Bound the caller's wait; only report success after every stage stops."""
-        self._cancel.set()
-        stages = [self._transcriber, *self._retired]
+        """Bound the caller's wait; only report success after every stage stops.
+
+        正常停止（_cancel 未置位）先停采集，让转写排空已收工作后再让翻译
+        排空（保证尾句仍能提交翻译）；cancel 已置位（故障/重启路径）或
+        排空超时则立即中止，且不为没做完的部分声称全部保存。
+        """
+        rest = list(self._retired)
         if self._translation is not None:
-            stages.append(self._translation)
-        for stage in stages:
-            stage.request_stop()
+            rest.append(self._translation)
+        graceful = not self._cancel.is_set()
+        if graceful:
+            for stage in self._retired:
+                stage.request_drain()
+            self._transcriber.request_drain()
+        else:
+            for stage in [self._transcriber, *rest]:
+                stage.request_stop()
         deadline = time.monotonic() + self._STOP_TIMEOUT
-        return all([stage.wait_stopped(max(0.0, deadline - time.monotonic()))
-                    for stage in stages])
+        def remaining():
+            return max(0.0, deadline - time.monotonic())
+        stopped = self._transcriber.wait_stopped(remaining())
+        if graceful and self._translation is not None:
+            # 尾句已产出后再开始翻译排空，避免被当作停止而拒收。
+            self._translation.request_drain()
+        stopped = all(stage.wait_stopped(remaining()) for stage in rest) and stopped
+        if not stopped and not self._cancel.is_set():
+            log.warning("停止排空超时，中止剩余在途工作")
+            for stage in [self._transcriber, *rest]:
+                stage.request_stop()
+            stopped = all(stage.wait_stopped(remaining())
+                          for stage in [self._transcriber, *rest]) and stopped
+        self._cancel.set()
+        return stopped
 
     def reconfigure(self, cfg: AppConfig):
         """Apply downstream changes in place; recognition keeps running."""
@@ -168,9 +193,29 @@ class Session:
         except OSError as error:
             self._report("record", "error", type(error).__name__)
 
-    def _on_speech(self, result: AsrResult, started_at: float, ended_at: float):
+    def _record_tag(self):
+        """入队时记录的录制文件身份；热切后迟到结果据此判定归属。"""
+        recorder = self._recorder
+        return None if recorder is None else recorder.path
+
+    def _record_seq(self, method, tag, *args):
+        """只写仍属原录制文件的结果；热切/关闭后的迟到结果丢弃，不串文件。"""
+        recorder = self._recorder
+        if recorder is None or not recorder.active or self._cancel.is_set():
+            return
+        if tag is None or recorder.path != tag:
+            log.info("丢弃热切后来自旧记录的 %s", method)
+            return
+        try:
+            getattr(recorder, method)(*args)
+        except OSError as error:
+            self._report("record", "error", type(error).__name__)
+
+    def _on_speech(self, result: AsrResult, started_at: float, ended_at: float,
+                   record_file=None):
         utterance = Utterance(next(self._ids), result.text, result.language, started_at, ended_at)
-        self._record("utterance", utterance)
+        self._record_files[utterance.seq] = record_file
+        self._record_seq("utterance", record_file, utterance)
         self._emit("entry", id=utterance.seq, original=utterance.text,
                    language=utterance.language)
         stage = self._translation
@@ -181,5 +226,6 @@ class Session:
                 stage.submit(utterance)
 
     def _on_translation(self, translation: Translation):
-        self._record("translation", translation)
+        tag = self._record_files.pop(translation.seq, None)
+        self._record_seq("translation", tag, translation)
         self._emit("translation", id=translation.seq, translation=translation.text)
