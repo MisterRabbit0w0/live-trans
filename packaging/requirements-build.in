@@ -2,4 +2,4 @@
 # 图标 ICO 已提交在 desktop/src-tauri/icons/，不再需要 PySide6 渲染；
 # 锁文件仍残留 pyside6 条目，待下次按 docs/releasing.md 重新生成时移除。
 pyinstaller==6.22.2
-build>=1.2,<2
+build>=1.6.1,<2
