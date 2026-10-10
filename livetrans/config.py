@@ -76,6 +76,8 @@ class UiConfig:
 @dataclass
 class RecordConfig:
     enabled: bool = False  # 把原文、译文和时间保存到 records/，不含音频
+    # 单次纪要请求的输入字符上限（超限直接报错，不发出请求）
+    summary_max_chars: int = 120_000
 
 
 @dataclass

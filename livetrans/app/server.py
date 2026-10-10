@@ -91,6 +91,8 @@ class Server:
             "records.get": app.records.get_record,
             "records.delete": app.records.delete_record,
             "records.summarize": app.records.summarize_record,
+            "records.summary": app.records.summary_status,
+            "records.summary.cancel": app.records.summary_cancel,
             "records.export": app.records.export_record,
         }
 

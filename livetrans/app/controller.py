@@ -39,7 +39,9 @@ class AppController:
             rec = getattr(self.runtime, "_recorder", None)
             return getattr(rec, "path", None)
 
-        self.records = RecordManager(cfg, loop, _get_current_record_path)
+        self.records = RecordManager(cfg, loop, _get_current_record_path,
+                                     config_provider=lambda: self.cfg,
+                                     notify=self._emit)
         self._generation = 0
         self._state = "idle"
         self._subtitle_visible = False
