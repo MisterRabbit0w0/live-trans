@@ -4,6 +4,7 @@
       "release-type": "python",
       "package-name": "livetrans",
       "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
       "extra-files": [
         "desktop/package.json",
         "desktop/src-tauri/tauri.conf.json",

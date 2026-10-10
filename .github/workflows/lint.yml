@@ -130,6 +130,17 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: desktop/src-tauri
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      # tauri::generate_context!() 编译期要求 frontendDist(../dist) 存在。
+      - name: Build frontend assets for context macro
+        working-directory: desktop
+        run: |
+          npm ci
+          npm run build
       - name: Rust tests
         run: cargo test --locked
       - name: Clippy
