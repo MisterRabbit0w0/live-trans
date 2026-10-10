@@ -1,22 +1,23 @@
 # Third-party software
 
-LiveTrans is licensed under MIT. Binary distributions also include Python,
+LiveTrans is licensed under MIT. Binary distributions also include the Tauri
+runtime (Rust crates listed in `desktop/src-tauri/Cargo.lock`), the Svelte/web
+frontend bundle (npm packages listed in `desktop/package-lock.json`), Python,
 PyInstaller's bootloader, faster-whisper, CTranslate2, ONNX Runtime,
 PyAudioWPatch / PortAudio, PyAV / FFmpeg and their dependencies. Their licenses
 remain separate from LiveTrans's MIT license.
 
-PySide6 / Qt is used only at build time to render the application icon
-(`packaging/icon.py`); it is not shipped in binary distributions.
+The application icon (`desktop/src-tauri/icons/icon.ico`) is committed to the
+repository; no additional rendering toolchain is shipped or required at build.
 
 The `licenses/` directory in the binary distribution contains license and notice
 files from the installed Python distributions, together with the upstream
 LGPL / GPL texts required by bundled components and Silero VAD's MIT notice.
 `build-info.json` records the exact package versions used to build the release.
-The portable ZIP and installer keep libraries as separate files; the single EXE
-extracts its embedded files to a temporary directory at startup. To use
-modified libraries, rebuild with the supplied source and packaging scripts, or
-use the portable package with replacement DLLs under `_internal/`. See
-`docs/releasing.md` for build instructions.
+The portable ZIP and the NSIS installer keep libraries as separate files. To
+use modified libraries, rebuild with the supplied source and packaging scripts,
+or replace files under `livetrans-core/_internal/`. See `docs/releasing.md` for
+build instructions.
 
 PyAV's source and its FFmpeg build recipe are at
 <https://github.com/PyAV-Org/PyAV/tree/v18.1.0>. No changes to these libraries

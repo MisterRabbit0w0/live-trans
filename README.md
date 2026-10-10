@@ -29,10 +29,12 @@ LiveTrans 是一款专为**外语直播、视频生肉、跨国网课及线上�
   - **Windows**：WASAPI 系统环回（整个系统声音）或 Process Loopback（仅捕获指定软件声音，建议 Windows 11 / Build 20348+）；
   - **macOS**：原生 ScreenCaptureKit 音频捕获；
   - **Linux**：PulseAudio / PipeWire 输出设备监听源；
-  - **保守型自适应增益 (Conservative AGC)**：筑牢底噪门限冻结（<-60 dBFS 静音不放大）、快降慢升防抽吸、最大 6x 增益硬顶与软限幅防护，弱音切出率提升至 100%。
+  - **保守型自适应增益 (Conservative AGC)**：筑牢底噪门限冻结（<-60 dBFS 静音不放大）、快降慢升防抽吸、最大 6x 增益硬顶与软限幅防护，减少弱音被误切出的概率。
 - 🛡️ **双进程模型隔离**：faster-whisper 本地模型在独立的子进程中运行，通过标准输入输出二进制帧协议通信。模型意外故障不影响主窗口，退出后显存瞬间释放。
 
 ---
+
+> **发行状态**：正式发行渠道为 Windows x64（NSIS 安装器与便携 ZIP，见 [构建与发布](docs/releasing.md)）。macOS / Linux 的音频捕获后端已具备源码实现，但未经过完整发行验收，仅视为实验性支持。
 
 ## 🏛️ 项目系统架构
 
@@ -166,26 +168,18 @@ pip install -e .
 ### 3. 编译并启动
 
 - **一键运行（推荐）**：  
-  直接双击根目录的 **`start.bat`**。  
-  *脚本会自动检测环境；若尚未编译桌面端，会自动调用 `cargo build --release` 编译并直接启动。*
+  直接双击根目录的 **`start.bat`**（开发入口）。  
+  *前置条件：已按上一步创建 `.venv`，并在 `desktop/` 执行过 `npm ci`；脚本会启动 `npm run tauri:dev` 进入开发模式。*
 
 - **手动开发模式（支持前端热重载）**：
   ```powershell
   cd desktop
-  npm install
+  npm ci
   npm run tauri:dev
   ```
 
-- **手动生产编译**：
-  ```powershell
-  cd desktop
-  npm install
-  npm run build
-  cd src-tauri
-  cargo build --release
-  ```
-  编译完成后的单文件绿色版程序位于：  
-  `desktop/src-tauri/target/release/livetrans.exe`
+- **发行产物构建（NSIS 安装器 + 便携 ZIP）**：  
+  完整流程见 [构建与发布](docs/releasing.md)：先冻结 Python 核心（PyInstaller），再执行 Tauri 生产构建。单独 `cargo build --release` 得到的壳缺少随包核心，不能当作发行产物。
 
 ---
 
@@ -236,14 +230,15 @@ pip install -e .
 本项目配备严格的双端自动化回归测试与静态代码诊断套件：
 
 ```powershell
-# 1. 运行 Python 后端回归测试 (86 项全链路用例)
+# 1. 运行 Python 后端回归测试（百余项离线用例）
 python -m unittest discover -s tests -v
 
-# 2. 运行前端 Vitest 单元测试 (12 项组件与逻辑用例)
+# 2. 运行前端 Vitest 单元测试
 npm test --prefix desktop
 
-# 3. 运行 Svelte 前端全量类型与语法诊断 (202 个源文件 0 错误 0 警告)
+# 3. 运行 Svelte 前端类型诊断与 Rust 测试 / 静态检查
 npm run check --prefix desktop
+cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
 
 # 4. 运行 Python 静态代码规范检查
 ruff check .
