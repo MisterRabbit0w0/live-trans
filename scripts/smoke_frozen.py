@@ -148,10 +148,19 @@ def _read_exact(stream, size):
 
 def check_worker(core: Path, timeout_s: float) -> None:
     """``--livetrans-worker`` 首帧必须是 hello。"""
+    env = dict(os.environ)
+    env["LIVETRANS_WORKER_TRACE"] = "1"
     proc = subprocess.Popen([str(core), "--livetrans-worker"],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, cwd=core.parent)
-    result = {}
+                            stderr=subprocess.PIPE, env=env, cwd=core.parent)
+    result = {"stderr": []}
+
+    def drain_stderr():
+        for chunk in iter(lambda: proc.stderr.read(4096), b""):
+            result["stderr"].append(chunk)
+
+    stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
+    stderr_thread.start()
 
     def read_hello():
         try:
@@ -171,9 +180,11 @@ def check_worker(core: Path, timeout_s: float) -> None:
         reader.start()
         reader.join(timeout_s)
         if reader.is_alive():
-            stderr = proc.stderr.read() if proc.poll() is not None else "<进程仍在运行>".encode()
+            stderr = b"".join(result["stderr"])
+            state = "已退出" if proc.poll() is not None else "仍在运行"
             raise SmokeFailure(
-                f"等待 worker hello 帧超时；stderr: {stderr[-2000:].decode('utf-8', 'replace')}")
+                f"等待 worker hello 帧超时（{state}）；stderr: "
+                f"{stderr[-2000:].decode('utf-8', 'replace')}")
         if "error" in result:
             raise result["error"]
         header = result.get("header")
