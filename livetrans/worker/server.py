@@ -79,6 +79,8 @@ def serve(stdin, stdout, engine_factory=_default_engine, models=None) -> int:
                                         bool(request.get("cuda", True)))
                 reply.update(type="loaded", model=engine.model_name, device=engine.device)
             elif op == "transcribe":
+                import numpy as np
+
                 if engine is None:
                     raise RuntimeError("model not loaded")
                 audio = np.frombuffer(payload, dtype=np.float32)
