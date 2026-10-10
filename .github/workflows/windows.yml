@@ -24,30 +24,28 @@ jobs:
           architecture: x64
           cache: pip
           cache-dependency-path: packaging/requirements-windows.lock
-      - name: Install locked dependencies and application
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Install locked Python dependencies and application
         run: |
           python -m pip install --require-hashes -r packaging/requirements-windows.lock
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install --no-deps --no-build-isolation -e .
-      - name: Install pinned Inno Setup compiler
-        shell: pwsh
-        run: |
-          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
-          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $installer
-          $expected = '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732'
-          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
-            throw 'Inno Setup checksum mismatch'
-          }
-          $compilerDir = Join-Path $env:RUNNER_TEMP 'InnoSetup'
-          $process = Start-Process -FilePath $installer -WindowStyle Hidden -Wait -PassThru -ArgumentList @(
-            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/NOICONS', "/DIR=`"$compilerDir`""
-          )
-          if ($process.ExitCode -ne 0) { throw "Compiler installation failed: $($process.ExitCode)" }
-          $compiler = Join-Path $compilerDir 'ISCC.exe'
-          if (!(Test-Path -LiteralPath $compiler)) { throw 'ISCC.exe missing' }
-          "ISCC=$compiler" >> $env:GITHUB_ENV
-      - name: Build portable ZIP, standalone EXE and installer
-        run: python scripts/build_windows.py --iscc "$env:ISCC"
+      - name: Install locked desktop dependencies
+        working-directory: desktop
+        run: npm ci
+      - name: Build frozen core, Tauri shell, NSIS installer and portable ZIP
+        # build_windows.py 内依次：PyInstaller onedir → check_windows_package
+        # → smoke_frozen（冻结核心管道烟测，先于 Tauri 构建）→ tauri build
+        # → 便携布局与壳二进制扫描 → ZIP/校验清单。
+        run: python scripts/build_windows.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-windows

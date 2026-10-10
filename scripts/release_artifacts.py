@@ -9,11 +9,20 @@ import subprocess
 from pathlib import Path
 
 from build_windows import app_version
+from bump_version import _versions
 
 
 def digest(path):
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def check_manifest_versions(version):
+    """pyproject.toml 与桌面三处清单必须一致，标签才算有效。"""
+    drift = {name: actual for name, actual in _versions().items() if actual != version}
+    if drift:
+        detail = "、".join(f"{name}={actual}" for name, actual in sorted(drift.items()))
+        raise SystemExit(f"清单版本与 pyproject.toml {version} 不一致: {detail}")
 
 
 def main():
@@ -22,6 +31,7 @@ def main():
     parser.add_argument("--directory", type=Path)
     args = parser.parse_args()
     version = app_version()
+    check_manifest_versions(version)
     if os.environ.get("GITHUB_REF") != f"refs/tags/v{version}":
         raise SystemExit(f"Release tag must match pyproject.toml: v{version}")
     if args.validate_tag:
@@ -31,7 +41,7 @@ def main():
         parser.error("--directory is required when checking release payloads")
     directory = args.directory
     stem = f"LiveTrans-{version}-windows-x64"
-    windows = {f"{stem}-portable.zip", f"{stem}-standalone.exe", f"{stem}-setup.exe",
+    windows = {f"{stem}-portable.zip", f"{stem}-setup.exe",
                "build-info.json", "third-party-licenses.zip"}
     expected = windows | {"SHA256SUMS.txt", f"livetrans-{version}-py3-none-any.whl",
                           f"livetrans-{version}.tar.gz"}

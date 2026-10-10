@@ -45,3 +45,6 @@ gitleaks-report.*
 desktop/node_modules/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+# 随包核心由 build_windows.py 复制到此，仅保留占位 .gitkeep 供编译期检查
+desktop/src-tauri/resources/livetrans-core/*
+!desktop/src-tauri/resources/livetrans-core/.gitkeep

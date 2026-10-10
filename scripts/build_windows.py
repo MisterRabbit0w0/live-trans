@@ -1,4 +1,12 @@
-"""Build Windows x64 CPU binaries without starting the application."""
+"""Build the Windows x64 CPU release: PyInstaller core, Tauri shell, NSIS + ZIP.
+
+PyInstaller freezes ``livetrans-core`` (stdin JSON-RPC + model worker), the
+onedir is staged under ``desktop/src-tauri/resources`` so the Tauri bundler
+ships it next to the shell EXE, then ``tauri build`` produces the NSIS
+installer and the same layout is zipped as the portable artifact. The build
+never starts the real application: the only executions are the frozen core's
+``--preview``/``--livetrans-worker`` smoke paths.
+"""
 from __future__ import annotations
 
 import argparse
@@ -16,10 +24,15 @@ from pathlib import Path
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
+DESKTOP = ROOT / "desktop"
+SRC_TAURI = DESKTOP / "src-tauri"
+# Tauri resources 的暂存目录（已加入 .gitignore，由本脚本每次重建）
+RESOURCE_STAGE = SRC_TAURI / "resources"
+TAURI_CLI = DESKTOP / "node_modules" / "@tauri-apps" / "cli" / "tauri.js"
 
 
-def run(*args):
-    subprocess.run([str(arg) for arg in args], cwd=ROOT, check=True)
+def run(*args, cwd=ROOT):
+    subprocess.run([str(arg) for arg in args], cwd=cwd, check=True)
 
 
 def app_version():
@@ -30,7 +43,6 @@ def app_version():
 
 
 def prepare_metadata(version):
-    # Qt lives only in the build environment; packaging/icon.py does the render.
     spec = importlib.util.spec_from_file_location(
         "livetrans_icon", ROOT / "packaging" / "icon.py")
     icon = importlib.util.module_from_spec(spec)
@@ -40,8 +52,7 @@ def prepare_metadata(version):
     if generated.exists():
         shutil.rmtree(generated)
     generated.mkdir(parents=True, exist_ok=True)
-    icon.write_icon(ROOT / "livetrans" / "assets" / "livetrans.svg",
-                    generated / "livetrans.ico")
+    icon.write_icon(generated / "livetrans.ico")
     numbers = tuple(map(int, version.split("."))) + (0,)
     (generated / "version.txt").write_text(
         "VSVersionInfo(ffi=FixedFileInfo("
@@ -83,15 +94,84 @@ def prepare_metadata(version):
     return generated
 
 
+def freeze_core():
+    """PyInstaller → build/frozen/livetrans-core/，随后立即做静态检查与烟测。"""
+    run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
+        "--distpath", ROOT / "build" / "frozen", "--workpath", ROOT / "build" / "pyinstaller",
+        ROOT / "packaging" / "livetrans.spec")
+    frozen = ROOT / "build" / "frozen"
+    run(sys.executable, ROOT / "scripts" / "check_windows_package.py", frozen)
+    run(sys.executable, ROOT / "scripts" / "smoke_frozen.py",
+        frozen / "livetrans-core")
+    return frozen / "livetrans-core"
+
+
+def stage_core_resource(core_dir: Path) -> Path:
+    """把 onedir 核心映射到 Tauri 资源目录，安装/便携布局保持一致。"""
+    target = RESOURCE_STAGE / "livetrans-core"
+    if not target.is_dir():
+        raise SystemExit(f"Tauri 资源目录缺失（应含占位 .gitkeep）: {target}")
+    for child in target.iterdir():
+        if child.name == ".gitkeep":  # 占位文件留在 git 中，不清除
+            continue
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    shutil.copytree(core_dir, target, dirs_exist_ok=True)
+    return target
+
+
+def build_shell(skip_installer: bool) -> Path:
+    """tauri build：release 壳 EXE；默认连带 NSIS 安装包。"""
+    if not TAURI_CLI.is_file():
+        raise SystemExit("desktop/node_modules 缺失，先在 desktop/ 运行 npm ci")
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("找不到 node，请先安装 Node.js")
+    bundles = ["--no-bundle"] if skip_installer else ["--bundles", "nsis"]
+    run(node, TAURI_CLI, "build", *bundles, cwd=DESKTOP)
+    shell = SRC_TAURI / "target" / "release" / "livetrans.exe"
+    if not shell.is_file():
+        raise SystemExit(f"Tauri 未产出壳可执行文件: {shell}")
+    return shell
+
+
+def collect_nsis(artifacts: Path, stem: str) -> Path:
+    nsis_dir = SRC_TAURI / "target" / "release" / "bundle" / "nsis"
+    installers = sorted(nsis_dir.glob("*-setup.exe")) if nsis_dir.is_dir() else []
+    if not installers:
+        raise SystemExit(f"NSIS 安装包缺失: {nsis_dir}")
+    if len(installers) > 1:
+        raise SystemExit(f"NSIS 安装包不唯一: {[p.name for p in installers]}")
+    target = artifacts / f"{stem}-setup.exe"
+    shutil.copyfile(installers[0], target)
+    return target
+
+
+def stage_portable(core_dir: Path, shell: Path, generated: Path, stem: str) -> Path:
+    """便携 ZIP 与安装版同布局：livetrans.exe 旁挂 livetrans-core/。"""
+    stage = ROOT / "build" / "portable" / stem
+    if stage.exists():
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True)
+    shutil.copyfile(shell, stage / "livetrans.exe")
+    shutil.copytree(core_dir, stage / "livetrans-core")
+    shutil.copytree(generated / "licenses", stage / "licenses")
+    shutil.copyfile(generated / "build-info.json", stage / "build-info.json")
+    # 布局终检 + 壳二进制构建机路径扫描
+    run(sys.executable, ROOT / "scripts" / "smoke_frozen.py",
+        stage / "livetrans-core", "--layout", stage, "--shell-exe", stage / "livetrans.exe")
+    return stage
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--iscc", type=Path, help="Inno Setup compiler; required for installer")
-    parser.add_argument("--skip-installer", action="store_true", help="only build ZIP and EXE")
+    parser.add_argument("--skip-installer", action="store_true",
+                        help="跳过 NSIS 打包（--no-bundle），仍产出便携 ZIP")
     args = parser.parse_args()
     if sys.platform != "win32" or platform.machine().lower() not in {"amd64", "x86_64"}:
         raise SystemExit("Run this build with Windows x64 Python")
-    if not args.skip_installer and (not args.iscc or not args.iscc.is_file()):
-        raise SystemExit("Pass --iscc PATH/ISCC.exe, or --skip-installer for binaries only")
     version = app_version()
     generated = prepare_metadata(version)
     artifacts = ROOT / "dist" / "windows"
@@ -99,18 +179,15 @@ def main():
     if artifacts.exists() and any(artifacts.iterdir()):
         raise SystemExit("dist/windows is not empty; move the previous release before rebuilding")
     artifacts.mkdir(parents=True, exist_ok=True)
-    run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
-        "--distpath", ROOT / "build" / "frozen", "--workpath", ROOT / "build" / "pyinstaller",
-        ROOT / "packaging" / "livetrans.spec")
-    frozen = ROOT / "build" / "frozen"
-    run(sys.executable, ROOT / "scripts" / "check_windows_package.py", frozen)
+    core_dir = freeze_core()
+    stage_core_resource(core_dir)
+    shell = build_shell(args.skip_installer)
     stem = f"LiveTrans-{version}-windows-x64"
-    shutil.make_archive(str(artifacts / f"{stem}-portable"), "zip", frozen, "LiveTrans")
-    shutil.copyfile(frozen / "LiveTrans-standalone.exe", artifacts / f"{stem}-standalone.exe")
     if not args.skip_installer:
-        run(args.iscc.resolve(), f"/DAppVersion={version}", f"/DSourceDir={frozen / 'LiveTrans'}",
-            f"/DOutputDir={artifacts}", f"/DAppIcon={generated / 'livetrans.ico'}",
-            ROOT / "packaging" / "windows.iss")
+        collect_nsis(artifacts, stem)
+    stage = stage_portable(core_dir, shell, generated, stem)
+    shutil.make_archive(str(artifacts / f"{stem}-portable"), "zip",
+                        stage.parent, stage.name)
     shutil.copyfile(generated / "build-info.json", artifacts / "build-info.json")
     shutil.make_archive(str(artifacts / "third-party-licenses"), "zip", generated, "licenses")
     checksums = []

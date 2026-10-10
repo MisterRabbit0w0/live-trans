@@ -125,56 +125,7 @@ fn quote_log_dir(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn core_command(app: &AppHandle) -> Result<Command, String> {
-    #[cfg(debug_assertions)]
-    let _ = app;
-    let mut command = if let Ok(python) = std::env::var("LIVETRANS_CORE_PYTHON") {
-        let mut command = Command::new(python);
-        command.arg("-m").arg("livetrans.app");
-        command.current_dir(repo_root());
-        command
-    } else {
-        #[cfg(debug_assertions)]
-        {
-            let root = repo_root();
-            #[cfg(windows)]
-            let python = root.join(".venv").join("Scripts").join("python.exe");
-            #[cfg(not(windows))]
-            let python = root.join(".venv").join("bin").join("python");
-            let mut command = Command::new(python);
-            command.arg("-m").arg("livetrans.app");
-            command.current_dir(&root);
-            command
-        }
-        #[cfg(not(debug_assertions))]
-        {
-            let mut binary = app
-                .path()
-                .resource_dir()
-                .map_err(|e| e.to_string())?
-                .join("livetrans-core")
-                .join("livetrans-core");
-            if cfg!(windows) {
-                binary.set_extension("exe");
-            }
-            if binary.is_file() {
-                Command::new(binary)
-            } else {
-                let root = repo_root();
-                #[cfg(windows)]
-                let python = root.join(".venv").join("Scripts").join("python.exe");
-                #[cfg(not(windows))]
-                let python = root.join(".venv").join("bin").join("python");
-                if python.is_file() {
-                    let mut command = Command::new(python);
-                    command.arg("-m").arg("livetrans.app");
-                    command.current_dir(&root);
-                    command
-                } else {
-                    return Err(format!("核心进程不存在: {}", binary.display()));
-                }
-            }
-        }
-    };
+    let mut command = bundled_command(app)?;
     if std::env::var("LIVETRANS_PREVIEW").as_deref() == Ok("1") {
         command.arg("--preview");
     }
@@ -205,6 +156,49 @@ fn core_command(app: &AppHandle) -> Result<Command, String> {
     Ok(command)
 }
 
+/// Release 只使用随包冻结核心（resource_dir/livetrans-core/）；
+/// debug 额外允许 LIVETRANS_CORE_PYTHON 覆盖或仓库 .venv 回退。
+#[cfg(debug_assertions)]
+fn bundled_command(app: &AppHandle) -> Result<Command, String> {
+    if let Ok(python) = std::env::var("LIVETRANS_CORE_PYTHON") {
+        let mut command = Command::new(python);
+        command.arg("-m").arg("livetrans.app");
+        command.current_dir(repo_root());
+        return Ok(command);
+    }
+    let _ = app;
+    let root = repo_root();
+    #[cfg(windows)]
+    let python = root.join(".venv").join("Scripts").join("python.exe");
+    #[cfg(not(windows))]
+    let python = root.join(".venv").join("bin").join("python");
+    let mut command = Command::new(python);
+    command.arg("-m").arg("livetrans.app");
+    command.current_dir(&root);
+    Ok(command)
+}
+
+/// 发行版找不到随包核心时立即给出含期望路径的明确错误，
+/// 不回退到构建机的开发环境。
+#[cfg(not(debug_assertions))]
+fn bundled_command(app: &AppHandle) -> Result<Command, String> {
+    let mut binary = app
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?
+        .join("livetrans-core")
+        .join("livetrans-core");
+    if cfg!(windows) {
+        binary.set_extension("exe");
+    }
+    if binary.is_file() {
+        Ok(Command::new(binary))
+    } else {
+        Err(format!("缺少随包核心进程，期望路径: {}", binary.display()))
+    }
+}
+
+#[cfg(debug_assertions)]
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
