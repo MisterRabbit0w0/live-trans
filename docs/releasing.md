@@ -33,7 +33,7 @@ CPU 发行包不包含 NVIDIA CUDA 库。自动识别模式选择 CPU；需要 C
 
 | 工作流 | 触发 | 输出 |
 |---|---|---|
-| CI / `lint.yml` | 分支推送、PR、手动调用、Release 调用 | Ruff、版本一致性（`bump_version.py --check`）、公开文件 / 历史脱敏检查、Gitleaks、离线回归、wheel / sdist、Vitest / svelte-check / vite build、cargo test / clippy |
+| CI / `lint.yml` | 分支推送、PR、手动调用、Release 调用 | Ruff、版本一致性（`bump_version.py --check`）、Tauri npm / Rust 版本对齐（`check_tauri_versions.py`）、公开文件 / 历史脱敏检查、Gitleaks、离线回归、wheel / sdist、Vitest / svelte-check / vite build、cargo test / clippy |
 | Windows packages / `windows.yml` | 手动调用、Release 调用 | NSIS 安装器、便携 ZIP、许可证归档、版本和校验清单（构建内含发行布局静态检查） |
 | Release / `release.yml` | 推送 `v*` 标签 | 检查和构建全部通过后创建 Release 草稿 |
 | Release Please / `release-please.yml` | 推送 `main`、手动调用 | 按 Conventional Commits 维护版本 / CHANGELOG PR |
@@ -69,6 +69,8 @@ uv pip compile pyproject.toml packaging/requirements-build.in --python-version 3
 检查依赖变更和许可证后，在全新构建环境安装并重新构建。不要把 `pip freeze` 中的本机路径、私有镜像地址或编辑安装路径写进锁文件。
 
 公开的 `.lock` 文件使用自包含的固定版本与哈希列表。项目扫描会拒绝索引、find-links、外部 requirements / constraints、直接 URL、本地路径和 editable 引用；依赖来源通过上面的生成命令指定，不写入锁文件。
+
+`@tauri-apps/api`、`@tauri-apps/cli` 与 Rust `tauri` crate 的 major.minor 必须一致，否则 `tauri build` 拒绝构建；CI 不跑 `tauri build`，由 `check_tauri_versions.py` 读取两个锁文件提前拦截。Dependabot 对这几个包只自动提 patch 更新，minor 升级需在同一 PR 中同时修改 `desktop/package.json` 与 `desktop/src-tauri/Cargo.toml`（含 `tauri-build` 与插件），并跑一次 `Windows packages` 验证。
 
 ## 脱敏与提交
 

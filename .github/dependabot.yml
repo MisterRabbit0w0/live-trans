@@ -10,11 +10,22 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
+    groups:
+      # @tauri-apps/* 与 Rust tauri crate 的 major.minor 必须一致（tauri build 强制）；
+      # npm 侧 minor 升级需与 cargo 侧手动同步，此处仅自动跟进 patch。
+      tauri:
+        patterns: ["@tauri-apps/*"]
+    ignore:
+      - dependency-name: "@tauri-apps/*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
   - package-ecosystem: cargo
     directory: /desktop/src-tauri
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "tauri"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
   - package-ecosystem: pip
     directory: /
     schedule:
