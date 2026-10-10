@@ -1,12 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "LiveTrans",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "io.github.misterrabbit0w0.livetrans",
   "build": {
     "frontendDist": "../dist",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build",
+    "beforeBundleCommand": "python ../scripts/check_bundled_core.py"
   },
   "app": {
     "windows": [],
@@ -15,6 +16,10 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": ["nsis"],
+    "resources": {
+      "resources/livetrans-core": "livetrans-core"
+    }
   }
 }

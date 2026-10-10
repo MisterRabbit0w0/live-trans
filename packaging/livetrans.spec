@@ -36,12 +36,14 @@ options = dict(
     debug=False,
     strip=False,
     upx=False,
-    console=False,
+    # 控制台子系统保留：壳与 worker 启动时用 CREATE_NO_WINDOW 隐藏窗口，
+    # 而 windowed 冻结程序可能让 stdin/stdout 成为空流导致协议立即 EOF。
+    console=True,
     icon=str(generated / "livetrans.ico"),
     version=str(generated / "version.txt"),
     contents_directory="_internal",
 )
-portable = EXE(pyz, analysis.scripts, [], exclude_binaries=True, name="LiveTrans", **options)
-COLLECT(portable, analysis.binaries, analysis.datas, strip=False, upx=False, name="LiveTrans")
-EXE(pyz, analysis.scripts, analysis.binaries, analysis.datas,
-    name="LiveTrans-standalone", **options)
+core = EXE(pyz, analysis.scripts, [], exclude_binaries=True, name="livetrans-core",
+           **options)
+COLLECT(core, analysis.binaries, analysis.datas, strip=False, upx=False,
+        name="livetrans-core")

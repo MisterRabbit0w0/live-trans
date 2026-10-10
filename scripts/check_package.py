@@ -27,9 +27,9 @@ def main():
                 entries = {member.name.partition("/")[2] for member in archive.getmembers()}
         missing = required - entries
         if path.suffix != ".whl":
-            build_files = {"packaging/livetrans.spec", "packaging/windows.iss",
+            build_files = {"packaging/livetrans.spec", "packaging/requirements-build.in",
                            "packaging/requirements-windows.lock", "packaging/entrypoint.py",
-                           "scripts/build_windows.py",
+                           "scripts/build_windows.py", "scripts/smoke_frozen.py",
                            "scripts/check_windows_package.py", "scripts/release_artifacts.py",
                            "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md"}
             missing |= build_files - entries
