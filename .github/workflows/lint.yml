@@ -46,6 +46,8 @@ jobs:
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
           "$RUNNER_TEMP/actionlint" -color
+      - name: Check manifest version consistency
+        run: python scripts/bump_version.py --check
       - name: Lint and parse Python
         run: |
           ruff check .
@@ -63,7 +65,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  frontend:
+  python-tests:
     runs-on: windows-2022
     timeout-minutes: 25
     env:
@@ -86,3 +88,48 @@ jobs:
           python -m pip install --no-deps --no-build-isolation -e .
       - name: Offline lifecycle and pipeline regression tests
         run: python -m unittest discover -s tests -v
+
+  desktop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Type and component check
+        run: npm run check
+      - name: Frontend tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Rust tests
+        run: cargo test --locked
+      - name: Clippy
+        run: cargo clippy --locked -- -D warnings

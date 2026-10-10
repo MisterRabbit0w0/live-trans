@@ -1,0 +1,14 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "livetrans",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "desktop/package.json",
+        "desktop/src-tauri/tauri.conf.json",
+        "desktop/src-tauri/Cargo.toml"
+      ]
+    }
+  }
+}
