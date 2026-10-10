@@ -26,6 +26,8 @@ _PYPROJECT = REPO_ROOT / "pyproject.toml"
 _PACKAGE_JSON = REPO_ROOT / "desktop" / "package.json"
 _TAURI_CONF = REPO_ROOT / "desktop" / "src-tauri" / "tauri.conf.json"
 _CARGO_TOML = REPO_ROOT / "desktop" / "src-tauri" / "Cargo.toml"
+_PACKAGE_LOCK = REPO_ROOT / "desktop" / "package-lock.json"
+_CARGO_LOCK = REPO_ROOT / "desktop" / "src-tauri" / "Cargo.lock"
 
 # 语义化版本：X.Y.Z，允许预发布/构建后缀（与 release-please 输出一致）
 _VERSION_RE = re.compile(
@@ -85,12 +87,59 @@ def _write_cargo_version(version: str) -> bool:
             return True
 
 
+def _read_package_lock_version() -> str:
+    data = json.loads(_PACKAGE_LOCK.read_text(encoding="utf-8"))
+    return str(data["packages"][""]["version"])
+
+
+def _write_package_lock_version(version: str) -> bool:
+    data = json.loads(_PACKAGE_LOCK.read_text(encoding="utf-8"))
+    root = data["packages"][""]
+    if root["version"] == version and data.get("version") == version:
+        return False
+    root["version"] = version
+    data["version"] = version
+    _PACKAGE_LOCK.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return True
+
+
+def _read_cargo_lock_version() -> str:
+    text = _CARGO_LOCK.read_text(encoding="utf-8")
+    match = re.search(
+        r'\[\[package\]\]\s*\nname\s*=\s*"livetrans-desktop"\s*\nversion\s*=\s*"([^"]+)"',
+        text,
+    )
+    if match is None:
+        raise RuntimeError(f"{_CARGO_LOCK}: 未找到 livetrans-desktop 包条目")
+    return match.group(1)
+
+
+def _write_cargo_lock_version(version: str) -> bool:
+    text = _CARGO_LOCK.read_text(encoding="utf-8")
+    new_text, count = re.subn(
+        r'(\[\[package\]\]\s*\nname\s*=\s*"livetrans-desktop"\s*\nversion\s*=\s*")[^"]*(")',
+        rf"\g<1>{version}\g<2>",
+        text,
+        count=1,
+    )
+    if count != 1:
+        raise RuntimeError(f"{_CARGO_LOCK}: 未找到 livetrans-desktop 包条目")
+    if new_text == text:
+        return False
+    _CARGO_LOCK.write_text(new_text, encoding="utf-8")
+    return True
+
+
 def _versions() -> dict[str, str]:
     return {
         str(_PYPROJECT.relative_to(REPO_ROOT)): _source_version(),
         str(_PACKAGE_JSON.relative_to(REPO_ROOT)): _read_json_version(_PACKAGE_JSON),
         str(_TAURI_CONF.relative_to(REPO_ROOT)): _read_json_version(_TAURI_CONF),
         str(_CARGO_TOML.relative_to(REPO_ROOT)): _read_cargo_version(),
+        str(_PACKAGE_LOCK.relative_to(REPO_ROOT)): _read_package_lock_version(),
+        str(_CARGO_LOCK.relative_to(REPO_ROOT)): _read_cargo_lock_version(),
     }
 
 
@@ -120,6 +169,8 @@ def _bump(version: str) -> int:
     for path, writer in (
         (_PACKAGE_JSON, lambda: _write_json_version(_PACKAGE_JSON, version)),
         (_TAURI_CONF, lambda: _write_json_version(_TAURI_CONF, version)),
+        (_PACKAGE_LOCK, lambda: _write_package_lock_version(version)),
+        (_CARGO_LOCK, lambda: _write_cargo_lock_version(version)),
         (_CARGO_TOML, lambda: _write_cargo_version(version)),
     ):
         if writer():
