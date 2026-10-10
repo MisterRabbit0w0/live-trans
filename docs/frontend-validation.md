@@ -4,14 +4,14 @@
 
 ## 自动检查范围
 
-Python 离线回归使用临时配置、假捕获和假识别 / 翻译引擎，覆盖设置草稿、校验与保存失败、外观更新、引擎重启、暂停状态和旧会话隔离。前端 Vitest 单测与 `svelte-check` 覆盖组件逻辑与类型，都不等同于 Windows 桌面材质和窗口交互验证。
+Python 离线回归使用临时配置、假捕获和假识别 / 翻译引擎，覆盖设置草稿、校验与保存失败、外观更新、引擎重启、暂停状态、正常停止尾段排空、纪要异步任务与旧会话隔离。前端 Vitest 单测与 `svelte-check` 覆盖组件逻辑与类型，`cargo test` / `clippy` 覆盖 Rust 宿主，都不等同于 Windows 桌面材质和窗口交互验证。
 
-构建检查分别读取 wheel、sdist、便携目录和单文件 EXE 的归档目录，确认 SVG 图标、VAD 模型与许可证收录。不会启动应用，也不会下载 Whisper 模型、录制音频或调用真实 API。
+构建检查分别读取 wheel、sdist 与冻结核心 onedir 目录，确认图标、VAD 模型与许可证收录；`smoke_frozen.py` 对冻结核心与 worker 进程做管道烟测，并扫描发行壳二进制中的开发路径残留。不会录音、下载 Whisper 模型或调用真实 API；真实安装验收仍以下方清单为准。
 
 ## 手动检查清单
 
-- [ ] 安装程序按当前用户安装；开始菜单、可选桌面快捷方式、卸载正常，卸载后保留用户配置。
-- [ ] 便携 ZIP 完整解压后、单文件 EXE 从不同目录启动后，都能加载控制中心和字幕窗。
+- [ ] 安装程序（NSIS）按当前用户安装；开始菜单、可选桌面快捷方式、卸载正常，卸载后保留用户配置。
+- [ ] 便携 ZIP 完整解压后可启动，壳能找到旁边的 `livetrans-core/` 并加载控制中心和字幕窗；从非源码目录启动不回退开发路径。
 - [ ] 无本机 Python 环境时仍可启动；CPU 自动识别不会选择 CUDA。
 - [ ] 静默启动与自动翻译的四种组合；静默启动失败时托盘通知。
 - [ ] 跨页草稿、应用、还原、字段错误、旧配置自定义目标语言及快捷字号同步。
@@ -32,6 +32,9 @@ Python 离线回归使用临时配置、假捕获和假识别 / 翻译引擎，�
 .venv\Scripts\python scripts\check_package.py
 npm test --prefix desktop
 npm run check --prefix desktop
+cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
+cargo clippy --locked --manifest-path desktop/src-tauri/Cargo.toml -- -D warnings
+python scripts\bump_version.py --check
 ```
 
 `livetrans-core --preview` 使用临时模拟会话提供预览数据，不触碰音频、模型或网络；截图应区分 Webview 内容与实际桌面合成结果。发行包命令见 [发布指南](releasing.md)。
