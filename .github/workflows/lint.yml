@@ -114,7 +114,8 @@ jobs:
         run: npm run build
 
   rust:
-    runs-on: ubuntu-24.04
+    # 桌面壳仅面向 Windows（DWM/Process Loopback），Ubuntu 缺 GTK 系统依赖。
+    runs-on: windows-2022
     timeout-minutes: 20
     defaults:
       run:
