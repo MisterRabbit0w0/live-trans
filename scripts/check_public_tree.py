@@ -76,6 +76,12 @@ def inspect_file(name: str, data: bytes):
                     "https://example-user:example-password@example.invalid/" in line
                 ):
                     continue
+                # Explicit placeholder usernames in fixtures/mocks only.
+                if rule == "user-home-path" and re.search(
+                    r"(?i)(?:Users[/\\]+|/home/)(?:demo|example|test|user)(?=[/\\]|[^\w.-]|$)",
+                    line,
+                ):
+                    continue
                 yield rule, number
         for match in SECRET_VALUE.finditer(line):
             value = match.group(1)
