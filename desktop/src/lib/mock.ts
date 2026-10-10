@@ -208,6 +208,8 @@ function downloadModel(name: string) {
 }
 
 let downloadCanceller: (() => void) | null = null;
+const summaryJobs = new Map<string, "running" | "done">();
+
 
 const METHODS: Record<
   string,
@@ -361,35 +363,35 @@ const METHODS: Record<
     return {
       name: name || "20260928-223000.jsonl",
       stem: "20260928-223000",
-      meta: { source: "system", created: 1727500000 },
+      meta: { source: "system", t: 1760000000 },
       size_label: "4.2 KB",
       date_str: "2026-09-28 22:30:00",
       entries: [
         {
           seq: 1,
-          start: 2.5,
-          end: 6.8,
+          start: 1760000002.5,
+          end: 1760000006.8,
           text: "The next session starts in five minutes.",
           translation: "下一场将在五分钟后开始。",
         },
         {
           seq: 2,
-          start: 8.0,
-          end: 12.4,
+          start: 1760000008.0,
+          end: 1760000012.4,
           text: "Please remember to bring your laptop.",
           translation: "请记得带上笔记本电脑。",
         },
         {
           seq: 3,
-          start: 14.1,
-          end: 18.9,
+          start: 1760000014.1,
+          end: 1760000018.9,
           text: "会場の受付は2階です。",
           translation: "The reception is on the second floor.",
         },
         {
           seq: 4,
-          start: 20.2,
-          end: 24.5,
+          start: 1760000020.2,
+          end: 1760000024.5,
           text: "We will review the release plan tomorrow.",
           translation: "明天我们将评审发布计划。",
         },
@@ -406,17 +408,46 @@ const METHODS: Record<
         : null,
     };
   },
-  "records.delete": () => true,
-  "records.summarize": (p) => ({
-    content:
-      p.mode === "concise"
-        ? "本次会议确认了下场会议在五分钟后开始，接待处位于二层，并明确明日将举行发布计划评审。"
-        : "### 📌 主题与核心主旨\n本次会议主要就后续会议日程安排、参会注意事项及明天即将进行的发布计划评审进行了同步确认。\n\n### 📝 重点内容与讨论议题\n- **[日程与地点安排]**：下一场分会议将于五分钟后准时开始，参会接待处设立于大楼二层。\n- **[参会准备]**：请所有相关研发与产品团队成员务必携带个人笔记本电脑参会。\n- **[发布计划推进]**：团队将于明天正式组织版本上线与发布计划的整体评审。\n\n### 💡 关键结论与达成共识\n- 确认了后续议程的时间节点与物理场地。\n- 发布评审定于明日开展，各模块需在今晚前锁定代码状态。\n\n### ✅ 待办事项与行动项 (Action Items)\n- [ ] **[参会人员]** 带齐个人设备准时进入下一场会议\n- [ ] **[项目团队]** 准备明日发布计划评审材料",
-    mode: p.mode || "minutes",
-    model: "qwen2.5:7b-instruct",
-    created_at: Date.now() / 1000,
-    utterance_count: 4,
-  }),
+  "records.delete": (p) => {
+    for (const key of [...summaryJobs.keys()]) {
+      if (key.startsWith(`${String(p.name || "")}:`)) summaryJobs.delete(key);
+    }
+    return true;
+  },
+  "records.summarize": (p) => {
+    const name = String(p.name || "");
+    const mode = String(p.mode || "minutes");
+    const key = `${name}:${mode}`;
+    if (summaryJobs.get(key) === "running") return { status: "running", mode };
+    summaryJobs.set(key, "running");
+    // 模拟核心异步纪要任务：完成后推送 record.summary 事件
+    setTimeout(() => {
+      summaryJobs.set(key, "done");
+      emitEvent("record.summary", {
+        record_id: name,
+        mode,
+        status: "done",
+        summary: {
+          content:
+            mode === "concise"
+              ? "本次会议确认了下场会议在五分钟后开始，接待处位于二层，并明确明日将举行发布计划评审。"
+              : "### 📌 主题与核心主旨\n本次会议主要就后续会议日程安排、参会注意事项及明天即将进行的发布计划评审进行了同步确认。\n\n### 📝 重点内容与讨论议题\n- **[日程与地点安排]**：下一场分会议将于五分钟后准时开始，参会接待处设立于大楼二层。\n- **[参会准备]**：请所有相关研发与产品团队成员务必携带个人笔记本电脑参会。\n- **[发布计划推进]**：团队将于明天正式组织版本上线与发布计划的整体评审。\n\n### 💡 关键结论与达成共识\n- 确认了后续议程的时间节点与物理场地。\n- 发布评审定于明日开展，各模块需在今晚前锁定代码状态。\n\n### ✅ 待办事项与行动项 (Action Items)\n- [ ] **[参会人员]** 带齐个人设备准时进入下一场会议\n- [ ] **[项目团队]** 准备明日发布计划评审材料",
+          mode,
+          model: "qwen2.5:7b-instruct",
+          created_at: Date.now() / 1000,
+          utterance_count: 4,
+        },
+      });
+    }, 800);
+    return { status: "queued", mode };
+  },
+  "records.summary": (p) => {
+    const name = String(p.record_id ?? p.name ?? "");
+    const mode = String(p.mode || "minutes");
+    const status = summaryJobs.get(`${name}:${mode}`);
+    if (!status) return { status: "idle", mode };
+    return { status, mode };
+  },
   "records.export": (p) => ({
     filename: `${p.name || "record"}.md`,
     content: "# LiveTrans 会议记录导出\n\n- 日期：2026-09-28\n\n## 会议纪要\n...",

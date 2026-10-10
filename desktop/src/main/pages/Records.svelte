@@ -8,9 +8,11 @@
   import PageHeading from "../../lib/components/PageHeading.svelte";
   import SubtitleEntry from "../../lib/components/SubtitleEntry.svelte";
   import Toggle from "../../lib/components/Toggle.svelte";
-  import { call } from "../../lib/core";
+  import { call, onEvent } from "../../lib/core";
   import { readBool, setValue } from "../../lib/settings";
   import { core } from "../../lib/store.svelte";
+  import { SummaryTracker } from "../../lib/summary.svelte";
+  import { entryOrigin, formatRelTime } from "../../lib/time";
 
   interface RecordItem {
     name: string;
@@ -53,10 +55,28 @@
   let selectedDetail = $state<RecordDetail | null>(null);
   let loadingDetail = $state(false);
 
-  // Summary generation state
-  let summarizing = $state(false);
+  // Summary generation state (async jobs; results arrive via record.summary events)
   let summaryMode = $state<"minutes" | "concise">("minutes");
-  let summaryError = $state("");
+
+  const tracker = new SummaryTracker({ call, onEvent }, (mode, summary) => {
+    if (selectedDetail && summaryMode === mode) {
+      selectedDetail.summary = summary;
+    }
+    const item = records.find((r) => r.name === tracker.recordName);
+    if (item) item.has_summary = true;
+  });
+
+  // 在途任务：记录 + 模式 维度的运行态与错误
+  const currentJob = $derived(tracker.jobs[summaryMode]);
+  const summarizing = $derived(currentJob?.status === "running");
+  const summaryError = $derived(
+    currentJob?.status === "error" ? currentJob.error : "",
+  );
+
+  // 会话原点：meta.t 缺失时回退为最早片段起点（旧文件兼容）
+  const timeOrigin = $derived(
+    selectedDetail ? entryOrigin(selectedDetail.meta, selectedDetail.entries) : 0,
+  );
 
   // Feedback states
   let copyFeedback = $state(false);
@@ -73,6 +93,7 @@
       if (selectedName && !records.some((r) => r.name === selectedName)) {
         selectedName = null;
         selectedDetail = null;
+        tracker.select(null);
       } else if (!selectedName && records.length > 0) {
         selectRecord(records[0].name);
       }
@@ -85,8 +106,8 @@
 
   async function selectRecord(name: string) {
     selectedName = name;
+    tracker.select(name);
     loadingDetail = true;
-    summaryError = "";
     try {
       const detail = (await call("records.get", { name })) as RecordDetail;
       selectedDetail = detail;
@@ -96,6 +117,8 @@
       } else {
         activeTab = detail.entries.length > 0 ? "transcript" : "summary";
       }
+      // 切页/重进恢复在途或刚完成的纪要任务
+      void tracker.refresh(summaryMode);
     } catch (err) {
       console.error("获取记录详情失败:", err);
       selectedDetail = null;
@@ -104,29 +127,10 @@
     }
   }
 
-  async function handleSummarize(force = false) {
-    if (!selectedName || summarizing) return;
-    summarizing = true;
-    summaryError = "";
-    try {
-      const summary = (await call("records.summarize", {
-        name: selectedName,
-        mode: summaryMode,
-        force,
-      })) as RecordDetail["summary"];
-      if (selectedDetail && summary) {
-        selectedDetail.summary = summary;
-      }
-      activeTab = "summary";
-      // Update has_summary tag in list
-      const item = records.find((r) => r.name === selectedName);
-      if (item) item.has_summary = true;
-    } catch (err) {
-      console.error("生成纪要失败:", err);
-      summaryError = err instanceof Error ? err.message : String(err);
-    } finally {
-      summarizing = false;
-    }
+  function handleSummarize(force = false) {
+    // 单飞去重：同记录同模式运行中再次点击被拦截
+    void tracker.submit(summaryMode, force);
+    activeTab = "summary";
   }
 
   async function handleCopy() {
@@ -137,7 +141,7 @@
     } else {
       textToCopy = selectedDetail.entries
         .map((e) => {
-          const t = `[${Math.floor(e.start / 60)}:${Math.floor(e.start % 60).toString().padStart(2, "0")}]`;
+          const t = formatRelTime(e.start, timeOrigin);
           return `${t} ${e.text}${e.translation ? "\n      " + e.translation : ""}`;
         })
         .join("\n\n");
@@ -177,6 +181,8 @@
     try {
       await call("records.delete", { name: selectedName });
       deleteDialogOpen = false;
+      // 晚到的 record.summary 事件不应再落到已删除记录的视图上
+      tracker.select(null);
       await refreshRecords();
     } catch (err) {
       console.error("删除记录失败:", err);
@@ -184,8 +190,11 @@
   }
 
   onMount(() => {
-    refreshRecords();
+    // 先订阅 record.summary 事件再拉取，避免快速完成的任务丢通知
+    void tracker.listen().then(() => refreshRecords());
+    return () => tracker.dispose();
   });
+
 </script>
 
 <div class="page-col">
@@ -361,11 +370,13 @@
                   <button
                     class="mode-btn"
                     class:active={summaryMode === "minutes"}
-                    disabled={summarizing}
+                    disabled={tracker.jobs["minutes"]?.status === "running"}
                     onclick={() => {
                       summaryMode = "minutes";
                       if (selectedDetail?.summary && selectedDetail.summary.mode !== "minutes") {
                         handleSummarize(true);
+                      } else {
+                        void tracker.refresh("minutes");
                       }
                     }}
                   >
@@ -374,11 +385,13 @@
                   <button
                     class="mode-btn"
                     class:active={summaryMode === "concise"}
-                    disabled={summarizing}
+                    disabled={tracker.jobs["concise"]?.status === "running"}
                     onclick={() => {
                       summaryMode = "concise";
                       if (selectedDetail?.summary && selectedDetail.summary.mode !== "concise") {
                         handleSummarize(true);
+                      } else {
+                        void tracker.refresh("concise");
                       }
                     }}
                   >
@@ -438,7 +451,7 @@
                 {#each selectedDetail.entries as entry (entry.seq)}
                   <div class="utterance-row">
                     <span class="time-badge">
-                      {Math.floor(entry.start / 60)}:{Math.floor(entry.start % 60).toString().padStart(2, "0")}
+                      {formatRelTime(entry.start, timeOrigin)}
                     </span>
                     <div class="utterance-text">
                       <SubtitleEntry
