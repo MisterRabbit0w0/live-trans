@@ -165,6 +165,18 @@ class InProcessTests(unittest.TestCase):
         self.assertFalse(self.thread.is_alive())
         spy.assert_called_once()
 
+    def test_records_summary_methods_dispatch(self):
+        # 方法已注册：未知记录返回内部错误/idle，而不是 method-not-found
+        self.request(1, "records.summary", {"record_id": "nope.jsonl"})
+        self.request(2, "records.summary.cancel", {"record_id": "nope.jsonl"})
+        messages = self.wait_for(
+            lambda m: any(x.get("id") == 1 for x in m)
+            and any(x.get("id") == 2 for x in m))
+        [not_found] = [m for m in messages if m.get("id") == 1]
+        [cancelled] = [m for m in messages if m.get("id") == 2]
+        self.assertEqual(not_found["error"]["code"], -32603)
+        self.assertEqual(cancelled["result"]["status"], "idle")
+
 
 class SubprocessTests(unittest.TestCase):
     def test_preview_core_over_pipes(self):

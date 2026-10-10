@@ -122,34 +122,38 @@ class Recorder:
             raise
 
 
-def load_transcript(path: Path) -> dict:
-    """Merge a transcript into ``{"meta", "entries", "marks"}`` ordered by ``seq``.
+def parse_transcript(text: str) -> dict:
+    """Merge transcript content into ``{"meta", "entries", "marks"}`` ordered by ``seq``.
 
     Entries whose translation never arrived have ``translation`` set to ``""``.
     An unreadable trailing line (for example after a crash) is skipped.
     """
     meta, entries, translations, marks = {}, {}, {}, []
-    with open(path, encoding="utf-8") as stream:
-        for line in stream:
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(record, dict):
-                continue
-            kind = record.get("type")
-            seq = record.get("seq")
-            if kind == "session":
-                meta = record
-            elif kind == "utterance" and isinstance(seq, int):
-                entries[seq] = record
-            elif kind == "translation" and isinstance(seq, int):
-                translations[seq] = str(record.get("text", ""))
-            elif kind not in ("utterance", "translation"):
-                marks.append(record)
+    for line in text.splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        kind = record.get("type")
+        seq = record.get("seq")
+        if kind == "session":
+            meta = record
+        elif kind == "utterance" and isinstance(seq, int):
+            entries[seq] = record
+        elif kind == "translation" and isinstance(seq, int):
+            translations[seq] = str(record.get("text", ""))
+        elif kind not in ("utterance", "translation"):
+            marks.append(record)
     return {
         "meta": meta,
         "entries": [dict(entries[seq], translation=translations.get(seq, ""))
                     for seq in sorted(entries)],
         "marks": marks,
     }
+
+
+def load_transcript(path: Path) -> dict:
+    """Read a transcript file and merge it via :func:`parse_transcript`."""
+    return parse_transcript(path.read_text(encoding="utf-8"))
