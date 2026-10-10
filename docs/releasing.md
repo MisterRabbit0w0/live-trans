@@ -46,9 +46,11 @@ Release 使用同一标签下的可复用工作流，不根据另一个分支的
 
 `pyproject.toml` 是版本唯一来源。`scripts/bump_version.py X.Y.Z` 同步四处清单，`--check` 校验漂移（CI 每提交执行）。日常提交遵循 Conventional Commits 后，release-please 自动维护版本 PR 与 `CHANGELOG.md`。
 
+1.0 之前 minor 版本对应路线图主题（0.2 能交付、0.3 低延迟……），只在该主题达到完成标准时升级。因此 release-please 配置为 1.0 前 `feat` 只升 patch、破坏性变更只升 minor；进入下一主题时在合入提交正文加 `Release-As: 0.X.0` 脚注显式指定。release-please 以最近的版本标签为起点汇总提交，当前版本未打标签时生成的版本 PR 会把更早的提交重复计入，不应合入。
+
 ## 发布步骤
 
-1. 在分支中完成改动并合入 `main`。合入后 `release-please.yml` 工作流会根据 Conventional Commits 自动维护版本 PR（更新 `pyproject.toml`、桌面与 Rust 清单及 `CHANGELOG.md`）；审查并合入该 PR 得到待发布版本。
+1. 在分支中完成改动并合入 `main`。合入后 `release-please.yml` 工作流会根据 Conventional Commits 自动维护版本 PR（更新 `pyproject.toml`、桌面与 Rust 清单及 `CHANGELOG.md`）；审查并合入该 PR 得到待发布版本。首个通过验收的版本（当前为 0.2.0，清单已就位）跳过这一步，直接从第 2 步开始。
 2. 手动运行 `Windows packages`，下载 Actions 产物，按 [界面验收清单](frontend-validation.md) 检查安装、卸载和功能。
 3. 在通过检查的提交上创建 `vX.Y.Z` 标签并推送。不要重新指向已经发布的标签。
 4. 等待 `Release` 的版本检查、CI 和 Windows 构建完成，下载草稿附件复核版本与 SHA-256。
