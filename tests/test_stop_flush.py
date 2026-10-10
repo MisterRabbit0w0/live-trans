@@ -1,4 +1,4 @@
-"""FIX-009: 正常停止排空尾句与在途工作；在途结果绑定原录制文件。
+"""正常停止排空尾句与在途工作；在途结果绑定原录制文件。
 
 All fakes are in-process; no audio device, model or network is touched.
 """
@@ -167,7 +167,7 @@ class StopFlushTest(unittest.TestCase):
         return load_transcript(path)["entries"]
 
     def test_normal_stop_flushes_tail_and_translation(self):
-        """复现 FIX-009：已说完但未达静音阈值的尾句必须在正常停止后入记录。"""
+        """复现：已说完但未达静音阈值的尾句必须在正常停止后入记录。"""
         session, events = self.make_session()
         session.start()
         session._transcriber._on_audio_chunk(np.ones(16000, dtype=np.float32))

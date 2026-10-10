@@ -108,11 +108,7 @@ def serve(stdin, stdout, engine_factory=_default_engine, models=None) -> int:
 
 
 def main(engine_factory=_default_engine) -> int:
-    if os.environ.get("LIVETRANS_WORKER_TRACE"):
-        os.write(2, b"worker-trace: before _claim_stdio\n")
     stdin, stdout = _claim_stdio()
-    if os.environ.get("LIVETRANS_WORKER_TRACE"):
-        os.write(2, b"worker-trace: stdio claimed\n")
     logging.basicConfig(level=logging.INFO, stream=sys.stderr,
                         format="%(name)s %(levelname)s %(message)s")
     try:

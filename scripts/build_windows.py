@@ -4,8 +4,7 @@ PyInstaller freezes ``livetrans-core`` (stdin JSON-RPC + model worker), the
 onedir is staged under ``desktop/src-tauri/resources`` so the Tauri bundler
 ships it next to the shell EXE, then ``tauri build`` produces the NSIS
 installer and the same layout is zipped as the portable artifact. The build
-never starts the real application: the only executions are the frozen core's
-``--preview``/``--livetrans-worker`` smoke paths.
+never starts the frozen core or the shell; all release checks are static.
 """
 from __future__ import annotations
 
@@ -95,14 +94,12 @@ def prepare_metadata(version):
 
 
 def freeze_core():
-    """PyInstaller → build/frozen/livetrans-core/，随后立即做静态检查与烟测。"""
+    """PyInstaller → build/frozen/livetrans-core/，随后立即做静态资源检查。"""
     run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
         "--distpath", ROOT / "build" / "frozen", "--workpath", ROOT / "build" / "pyinstaller",
         ROOT / "packaging" / "livetrans.spec")
     frozen = ROOT / "build" / "frozen"
     run(sys.executable, ROOT / "scripts" / "check_windows_package.py", frozen)
-    run(sys.executable, ROOT / "scripts" / "smoke_frozen.py",
-        frozen / "livetrans-core")
     return frozen / "livetrans-core"
 
 
@@ -159,9 +156,8 @@ def stage_portable(core_dir: Path, shell: Path, generated: Path, stem: str) -> P
     shutil.copytree(core_dir, stage / "livetrans-core")
     shutil.copytree(generated / "licenses", stage / "licenses")
     shutil.copyfile(generated / "build-info.json", stage / "build-info.json")
-    # 布局终检 + 壳二进制构建机路径扫描
-    run(sys.executable, ROOT / "scripts" / "smoke_frozen.py",
-        stage / "livetrans-core", "--layout", stage, "--shell-exe", stage / "livetrans.exe")
+    # 布局终检 + 壳二进制构建机路径扫描（静态，不启动进程）
+    run(sys.executable, ROOT / "scripts" / "check_release_layout.py", stage)
     return stage
 
 

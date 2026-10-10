@@ -43,8 +43,7 @@ jobs:
         run: npm ci
       - name: Build frozen core, Tauri shell, NSIS installer and portable ZIP
         # build_windows.py 内依次：PyInstaller onedir → check_windows_package
-        # → smoke_frozen（冻结核心管道烟测，先于 Tauri 构建）→ tauri build
-        # → 便携布局与壳二进制扫描 → ZIP/校验清单。
+        # → tauri build → 便携布局与壳二进制静态检查 → ZIP/校验清单。
         run: python scripts/build_windows.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

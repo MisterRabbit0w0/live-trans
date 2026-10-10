@@ -29,7 +29,7 @@ def main():
         if path.suffix != ".whl":
             build_files = {"packaging/livetrans.spec", "packaging/requirements-build.in",
                            "packaging/requirements-windows.lock", "packaging/entrypoint.py",
-                           "scripts/build_windows.py", "scripts/smoke_frozen.py",
+                           "scripts/build_windows.py", "scripts/check_release_layout.py",
                            "scripts/check_windows_package.py", "scripts/release_artifacts.py",
                            "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md"}
             missing |= build_files - entries

@@ -12,7 +12,7 @@ npm ci --prefix desktop
 .venv-build\Scripts\python scripts\build_windows.py
 ```
 
-`build_windows.py` 依次执行：PyInstaller 冻结 `livetrans-core` onedir → `check_windows_package.py` 资源完整性检查 → `smoke_frozen.py` 冻结核心管道烟测（`app.snapshot`/`app.start`/`app.shutdown`、worker hello 帧、stdin EOF 退出）→ 复制核心到 `desktop/src-tauri/resources/livetrans-core/` → `tauri build --bundles nsis` → 便携布局组装与二次烟测（布局 + 壳二进制路径残留扫描）→ ZIP、许可证归档、`build-info.json` 与 `SHA256SUMS.txt`。加 `--skip-installer` 时 Tauri 以 `--no-bundle` 编译，只产出便携 ZIP，不生成安装器。构建脚本不会录音、下载识别模型或访问翻译服务。
+`build_windows.py` 依次执行：PyInstaller 冻结 `livetrans-core` onedir → `check_windows_package.py` 资源完整性检查 → 复制核心到 `desktop/src-tauri/resources/livetrans-core/` → `tauri build --bundles nsis` → 便携布局组装与 `check_release_layout.py` 静态检查（布局 + 壳二进制路径残留扫描）→ ZIP、许可证归档、`build-info.json` 与 `SHA256SUMS.txt`。加 `--skip-installer` 时 Tauri 以 `--no-bundle` 编译，只产出便携 ZIP，不生成安装器。构建脚本不启动冻结核心或壳，不会录音、下载识别模型或访问翻译服务。
 
 `dist/windows/` 保存最终产物，再次构建前移走旧产物（脚本拒绝混合新旧版本）：
 
@@ -34,7 +34,7 @@ CPU 发行包不包含 NVIDIA CUDA 库。自动识别模式选择 CPU；需要 C
 | 工作流 | 触发 | 输出 |
 |---|---|---|
 | CI / `lint.yml` | 分支推送、PR、手动调用、Release 调用 | Ruff、版本一致性（`bump_version.py --check`）、公开文件 / 历史脱敏检查、Gitleaks、离线回归、wheel / sdist、Vitest / svelte-check / vite build、cargo test / clippy |
-| Windows packages / `windows.yml` | 手动调用、Release 调用 | NSIS 安装器、便携 ZIP、许可证归档、版本和校验清单（构建内含冻结核心烟测） |
+| Windows packages / `windows.yml` | 手动调用、Release 调用 | NSIS 安装器、便携 ZIP、许可证归档、版本和校验清单（构建内含发行布局静态检查） |
 | Release / `release.yml` | 推送 `v*` 标签 | 检查和构建全部通过后创建 Release 草稿 |
 | Release Please / `release-please.yml` | 推送 `main`、手动调用 | 按 Conventional Commits 维护版本 / CHANGELOG PR |
 
