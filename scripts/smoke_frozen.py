@@ -171,7 +171,7 @@ def check_worker(core: Path, timeout_s: float) -> None:
         reader.start()
         reader.join(timeout_s)
         if reader.is_alive():
-            stderr = proc.stderr.read() if proc.poll() is not None else b""
+            stderr = proc.stderr.read() if proc.poll() is not None else "<进程仍在运行>".encode()
             raise SmokeFailure(
                 f"等待 worker hello 帧超时；stderr: {stderr[-2000:].decode('utf-8', 'replace')}")
         if "error" in result:
