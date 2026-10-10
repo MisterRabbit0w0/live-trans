@@ -143,6 +143,8 @@ def _read_exact(stream, size):
         chunk = stream.read(remaining)
         if not chunk:
             raise SmokeFailure("worker 输出流提前关闭")
+        chunks.append(chunk)
+        remaining -= len(chunk)
     return b"".join(chunks)
 
 
@@ -175,6 +177,7 @@ def check_worker(core: Path, timeout_s: float) -> None:
         except Exception as error:  # 读超时以外的原因同样要回传
             result["error"] = error
 
+    ok = False
     try:
         reader = threading.Thread(target=read_hello, daemon=True)
         reader.start()
@@ -191,15 +194,18 @@ def check_worker(core: Path, timeout_s: float) -> None:
         _require(isinstance(header, dict) and header.get("type") == "hello",
                  f"worker 首帧不是 hello: {header}")
         _require(isinstance(header.get("version"), int), f"hello 缺 version: {header}")
+        # 关闭 stdin（应用退出）应让 worker 正常结束
+        proc.stdin.close()
+        code = proc.wait(timeout_s)
+        _require(code == 0, f"worker 关闭 stdin 后退出码为 {code}")
+        ok = True
     finally:
-        if proc.poll() is None:
+        if not ok and proc.poll() is None:
             proc.kill()
             proc.wait(5)
         for stream in (proc.stdin, proc.stdout, proc.stderr):
-            stream.close()
-    # EOF（应用退出）应让 worker 正常结束
-    code = proc.wait(timeout_s)
-    _require(code == 0, f"worker 关闭 stdin 后退出码为 {code}")
+            if not stream.closed:
+                stream.close()
     print("worker: --livetrans-worker hello 帧与 EOF 退出通过")
 
 
