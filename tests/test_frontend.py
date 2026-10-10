@@ -523,6 +523,7 @@ class LifecycleTests(unittest.TestCase):
         transcriber._capture = capture
         transcriber._cleanup.arm()
         transcriber._STOP_TIMEOUT = 0.05
+        transcriber._DRAIN_TIMEOUT = 0.05
         self.assertFalse(transcriber.stop())
         self.assertIs(transcriber._capture, capture)
         with self.assertRaises(RuntimeError):
@@ -702,7 +703,7 @@ class LifecycleTests(unittest.TestCase):
             session.stop()
         self.assertEqual(len(closed), 3)
 
-    def test_stop_waits_for_request_before_closing_client_and_drops_reply(self):
+    def test_normal_stop_waits_for_inflight_translation_and_delivers_it(self):
         release, entered = threading.Event(), threading.Event()
         session, events, closed = self.make_session(translate_delay=release, translated=entered)
         session.start()
@@ -716,7 +717,8 @@ class LifecycleTests(unittest.TestCase):
             release.set()
             stop_thread.join(2)
             self.assertFalse(stop_thread.is_alive())
-            self.assertNotIn("translation", [e["kind"] for e in events])
+            # 正常停止的排空预算内完成的翻译被保留并投递。
+            self.assertIn("translation", [e["kind"] for e in events])
         finally:
             release.set()
             stop_thread.join(3)

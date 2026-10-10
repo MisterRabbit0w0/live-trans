@@ -43,11 +43,18 @@ def build_capture(cfg, callback):
 class Transcriber:
     """Reads only the audio, recognition and VAD settings of ``cfg``.
 
-    ``on_speech(result, started_at, ended_at)`` runs on the recognition thread
-    and must not block. ``report(stage, status, error=None)`` describes the
-    ``audio`` and ``asr`` stages. After a failed ``start`` the owner calls ``stop``.
+    ``on_speech(result, started_at, ended_at, tag)`` runs on the recognition
+    thread and must not block; ``tag`` is the value ``tag_factory`` returned
+    when the audio was segmented, so results stay bound to the record that was
+    open then. ``report(stage, status, error=None)`` describes the ``audio``
+    and ``asr`` stages. After a failed ``start`` the owner calls ``stop``.
+
+    A normal ``stop`` first stops capture, then drains buffered/queued work
+    within ``_DRAIN_TIMEOUT`` before it may abort; ``request_stop`` alone is
+    the abort path and drops anything still in flight.
     """
 
+    _DRAIN_TIMEOUT = 5.0
     _STOP_TIMEOUT = 5.0
     _CAPTURE_RETRY_DELAY = 0.1
 
@@ -55,11 +62,15 @@ class Transcriber:
         self, cfg: AppConfig, on_speech: Callable[[AsrResult, float, float], None],
         report: Callable[..., None], cancel: threading.Event | None = None, *,
         asr_factory=build_asr, capture_factory=build_capture, vad_factory=VadSegmenter,
+        tag_factory: Callable[[], object] | None = None,
     ):
         self._cfg = cfg
         self._on_speech = on_speech
         self._report = report
         self._cancel = cancel if cancel is not None else threading.Event()
+        # Set by request_drain: stop feeding new work, flush what is buffered.
+        self._drain = threading.Event()
+        self._vad_done = threading.Event()
         self._paused = False
         self._audio_q = queue.Queue(maxsize=256)
         self._asr_q = queue.Queue(maxsize=16)
@@ -70,6 +81,7 @@ class Transcriber:
         self._asr_factory = asr_factory
         self._capture_factory = capture_factory
         self._vad_factory = vad_factory
+        self._tag_factory = tag_factory or (lambda: None)
         self._agc = (
             ConservativeAGC()
             if getattr(self._cfg, "audio_gain_enabled", True)
@@ -125,11 +137,26 @@ class Transcriber:
             raise
 
     def stop(self):
-        """Bound the caller's wait; only report success after all resources stop."""
+        """正常停止：先排空已接收的工作，超时转为中止。
+
+        返回 False 表示预算用尽转入中止路径且清理仍未完成；调用方不应
+        把 True 以外的结果解释为全部保存。
+        """
+        self.request_drain()
+        if self.wait_stopped(self._DRAIN_TIMEOUT):
+            return True
+        log.warning("转写排空超时，中止剩余在途工作")
         self.request_stop()
         return self.wait_stopped(self._STOP_TIMEOUT)
 
+    def request_drain(self):
+        """正常停止的第一步：停止采集，缓冲与队列中的工作在预算内处理完。"""
+        self._drain.set()
+        self._cleanup.request()
+
     def request_stop(self):
+        """中止路径：立即丢弃一切仍在途的工作。"""
+        self._drain.set()
         self._cancel.set()
         self._cleanup.request()
 
@@ -157,14 +184,19 @@ class Transcriber:
     def paused(self):
         return self._paused
 
+    def _accepting_audio(self):
+        return not self._paused and not self._cancel.is_set() and not self._drain.is_set()
+
     def _on_audio_chunk(self, chunk: np.ndarray):
-        if not self._paused and not self._cancel.is_set():
+        if self._accepting_audio():
             self._put(self._audio_q, chunk)
 
     def _on_segment(self, audio):
         # The VAD cuts a segment right after it ends; the queue delay before is small.
         ended_at = time.time()
-        self._put(self._asr_q, (audio, ended_at - len(audio) / SAMPLE_RATE, ended_at))
+        self._put(self._asr_q,
+                  (audio, ended_at - len(audio) / SAMPLE_RATE, ended_at,
+                   self._tag_factory()))
 
     def _put(self, target, value):
         if not self._cancel.is_set():
@@ -173,8 +205,11 @@ class Transcriber:
             except queue.Full:
                 log.warning("处理不及音频产生速度，丢弃一段")
 
-    def _items(self, source):
+    def _items(self, source, flushed):
+        """``flushed`` 在正常排空时返回 True，表示上游已无更多输入。"""
         while not self._cancel.is_set():
+            if flushed() and source.empty():
+                return
             try:
                 value = source.get(timeout=0.1)
             except queue.Empty:
@@ -183,19 +218,34 @@ class Transcriber:
                 yield value
 
     def _vad_worker(self):
-        for chunk in self._items(self._audio_q):
-            try:
-                if self._agc is not None:
-                    chunk = self._agc.process(chunk)
-                self._vad.feed(chunk)
-            except Exception as error:
-                self._report("audio", "error", type(error).__name__)
-            else:
-                self._report("audio", "ready")
+        try:
+            for chunk in self._items(self._audio_q, self._drain.is_set):
+                try:
+                    if self._agc is not None:
+                        chunk = self._agc.process(chunk)
+                    self._vad.feed(chunk)
+                except Exception as error:
+                    self._report("audio", "error", type(error).__name__)
+                else:
+                    self._report("audio", "ready")
+            if self._drain.is_set() and not self._cancel.is_set():
+                # 正常停止：把已收但未达静音阈值的尾段按既有规则收尾。
+                finish = getattr(self._vad, "finish", None)
+                if finish is not None:
+                    try:
+                        finish()
+                    except Exception as error:
+                        self._report("audio", "error", type(error).__name__)
+        finally:
+            self._vad_done.set()
 
     def _asr_worker(self):
         language = None if self._cfg.asr.language == "auto" else self._cfg.asr.language
-        for audio, started_at, ended_at in self._items(self._asr_q):
+
+        def flushed():
+            return self._drain.is_set() and self._vad_done.is_set() and self._audio_q.empty()
+
+        for audio, started_at, ended_at, tag in self._items(self._asr_q, flushed):
             try:
                 result = self._engine.transcribe(audio, language=language)
             except Exception as error:
@@ -203,4 +253,4 @@ class Transcriber:
                 continue
             self._report("asr", "ready")
             if result.text:
-                self._on_speech(result, started_at, ended_at)
+                self._on_speech(result, started_at, ended_at, tag)

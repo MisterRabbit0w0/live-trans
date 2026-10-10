@@ -108,6 +108,16 @@ class VadSegmenter:
             self._process_frame(data[i * FRAME_SIZE : (i + 1) * FRAME_SIZE])
         self._residual = data[n_frames * FRAME_SIZE :]
 
+    def finish(self) -> None:
+        """正常结束：把缓冲中按既有最短语音规则仍成立的尾段 emit。
+
+        不足最短语音的缓冲按既有丢段规则丢弃；残留不足一帧的音频一并放弃。
+        """
+        if self._in_speech:
+            self._emit(trim_tail=True)
+        self._residual = np.empty(0, dtype=np.float32)
+        self._pre_roll.clear()
+
     def _process_frame(self, frame: np.ndarray) -> None:
         p = self._model.prob(frame)
         if not self._in_speech:

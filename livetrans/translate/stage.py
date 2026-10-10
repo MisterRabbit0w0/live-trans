@@ -26,6 +26,7 @@ class TranslationStage:
     """
 
     WORKERS = 2
+    _DRAIN_TIMEOUT = 5.0
     _STOP_TIMEOUT = 5.0
 
     def __init__(
@@ -38,6 +39,7 @@ class TranslationStage:
         self._factory = translator_factory
         self._target_code = target_lang_code(cfg.target_language)
         self._cancel = threading.Event()
+        self._drain = threading.Event()
         self._queue = queue.Queue(maxsize=64)
         self._threads = []
         self._translator = None
@@ -61,7 +63,7 @@ class TranslationStage:
 
     def submit(self, utterance: Utterance) -> bool:
         """Queue without blocking; False once this stage is stopping."""
-        if self._cancel.is_set():
+        if self._cancel.is_set() or self._drain.is_set():
             return False
         # Whisper's zh code carries no script information. Chinese targets
         # must still pass through translation for simplified/traditional conversion.
@@ -85,14 +87,24 @@ class TranslationStage:
                 return pending
 
     def stop(self):
-        """Bound the caller's wait; only report success after the client is closed."""
+        """正常停止：预算内处理完已入队的句子，超时转为中止。"""
+        self.request_drain()
+        if self.wait_stopped(self._DRAIN_TIMEOUT):
+            return True
+        log.warning("翻译排空超时，中止剩余在途工作")
         self.request_stop()
         return self.wait_stopped(self._STOP_TIMEOUT)
 
-    def request_stop(self):
-        self._cancel.set()
+    def request_drain(self):
+        """正常停止：不再接收新句，处理完已收到的句子。"""
+        self._drain.set()
         self._cleanup.request()
 
+    def request_stop(self):
+        """中止路径：立即丢弃一切仍在途的工作。"""
+        self._drain.set()
+        self._cancel.set()
+        self._cleanup.request()
     def wait_stopped(self, timeout):
         return self._cleanup.wait(timeout)
 
@@ -111,6 +123,8 @@ class TranslationStage:
 
     def _worker(self):
         while not self._cancel.is_set():
+            if self._drain.is_set() and self._queue.empty():
+                return
             try:
                 utterance = self._queue.get(timeout=0.1)
             except queue.Empty:
