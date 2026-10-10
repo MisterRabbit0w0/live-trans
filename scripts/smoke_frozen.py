@@ -222,8 +222,8 @@ def main():
                         help="发行布局目录（livetrans.exe + livetrans-core/）")
     parser.add_argument("--shell-exe", type=Path,
                         help="release 壳 EXE；扫描构建机路径残留")
-    parser.add_argument("--timeout", type=float, default=30.0,
-                        help="单次协议等待秒数（默认 30）")
+    parser.add_argument("--timeout", type=float, default=120.0,
+                        help="单次协议等待秒数（默认 120；CI 冷机冻结引导较慢）")
     args = parser.parse_args()
     core = _resolve_core(args.core)
     try:
