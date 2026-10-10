@@ -48,6 +48,8 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color
       - name: Check manifest version consistency
         run: python scripts/bump_version.py --check
+      - name: Check Tauri npm / Rust version alignment
+        run: python scripts/check_tauri_versions.py
       - name: Lint and parse Python
         run: |
           ruff check .

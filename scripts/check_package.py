@@ -31,6 +31,7 @@ def main():
                            "packaging/requirements-windows.lock", "packaging/entrypoint.py",
                            "scripts/build_windows.py", "scripts/check_release_layout.py",
                            "scripts/check_windows_package.py", "scripts/release_artifacts.py",
+                           "scripts/check_tauri_versions.py",
                            "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md"}
             missing |= build_files - entries
         for notice in ("THIRD_PARTY_NOTICES.md", "Silero-VAD-MIT.txt", "LGPL-3.0-only.txt"):
