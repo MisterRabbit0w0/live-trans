@@ -1,15 +1,19 @@
 """Translate utterances on background workers; one instance per translation configuration."""
+
 from __future__ import annotations
 
+import collections
 import logging
 import queue
 import threading
+import time
 from collections.abc import Callable
 
 from ..config import TranslateConfig
 from ..events import Translation, Utterance
 from ..languages import target_lang_code
 from ..lifecycle import Cleanup
+from .base import TranslationHistory
 from .openai_compat import OpenAICompatTranslator
 
 log = logging.getLogger(__name__)
@@ -28,10 +32,16 @@ class TranslationStage:
     WORKERS = 2
     _DRAIN_TIMEOUT = 5.0
     _STOP_TIMEOUT = 5.0
+    _HISTORY_LEN = 3
+    _RETRY_DELAY = 0.5
 
     def __init__(
-        self, cfg: TranslateConfig, on_translation: Callable[[Translation], None],
-        report: Callable[..., None], *, translator_factory=build_translator,
+        self,
+        cfg: TranslateConfig,
+        on_translation: Callable[[Translation], None],
+        report: Callable[..., None],
+        *,
+        translator_factory=build_translator,
     ):
         self._cfg = cfg
         self._on_translation = on_translation
@@ -44,6 +54,9 @@ class TranslationStage:
         self._threads = []
         self._translator = None
         self._cleanup = Cleanup(self._release, "livetrans-translation-cleanup")
+        # 最近翻译的 (源语言, 原文, 译文)，用作上下文；写多读多，加锁保护。
+        self._history: collections.deque = collections.deque(maxlen=self._HISTORY_LEN)
+        self._history_lock = threading.Lock()
 
     def start(self):
         self._cleanup.arm()
@@ -55,7 +68,9 @@ class TranslationStage:
             raise
         for index in range(self.WORKERS):
             thread = threading.Thread(
-                target=self._worker, name=f"livetrans-translate-{index}", daemon=True,
+                target=self._worker,
+                name=f"livetrans-translate-{index}",
+                daemon=True,
             )
             self._threads.append(thread)
             thread.start()
@@ -67,8 +82,12 @@ class TranslationStage:
             return False
         # Whisper's zh code carries no script information. Chinese targets
         # must still pass through translation for simplified/traditional conversion.
-        if self._target_code and self._target_code != "zh" \
-                and utterance.language == self._target_code:
+        if (
+            self._target_code
+            and self._target_code != "zh"
+            and utterance.language == self._target_code
+        ):
+            self._remember(utterance.language, utterance.text, utterance.text)
             self._on_translation(Translation(utterance.seq, utterance.text))
             return True
         try:
@@ -105,8 +124,17 @@ class TranslationStage:
         self._drain.set()
         self._cancel.set()
         self._cleanup.request()
+
     def wait_stopped(self, timeout):
         return self._cleanup.wait(timeout)
+
+    def _history_snapshot(self) -> TranslationHistory:
+        with self._history_lock:
+            return list(self._history)
+
+    def _remember(self, source_language: str, source_text: str, text: str) -> None:
+        with self._history_lock:
+            self._history.append((source_language, source_text, text))
 
     @property
     def stopped(self):
@@ -131,12 +159,24 @@ class TranslationStage:
                 continue
             if self._cancel.is_set():
                 break
-            try:
-                text = self._translator.translate(
-                    utterance.text, source_language=utterance.language,
-                )
-            except Exception as error:
-                self._report("translate", "error", type(error).__name__)
+            history = self._history_snapshot()
+            text = None
+            for attempt in range(2):
+                try:
+                    text = self._translator.translate(
+                        utterance.text,
+                        source_language=utterance.language,
+                        history=history,
+                    )
+                    break
+                except Exception as error:
+                    if attempt == 0 and not self._cancel.is_set():
+                        # 瞬时网络抖动常见，快速重试一次；仍失败则丢弃本句。
+                        time.sleep(self._RETRY_DELAY)
+                        continue
+                    self._report("translate", "error", type(error).__name__)
+            if text is None:
                 continue
+            self._remember(utterance.language, utterance.text, text)
             self._report("translate", "ready")
             self._on_translation(Translation(utterance.seq, text))
