@@ -16,7 +16,7 @@ Real-time bilingual floating subtitles for foreign-language livestreams, raw vid
 
 </div>
 
-LiveTrans captures system audio, segments speech with streaming VAD, transcribes it locally with faster-whisper, translates it, and shows bilingual subtitles in an always-on-top overlay. Afterwards, browse a timestamped bilingual transcript and generate meeting notes in one click.
+LiveTrans captures system audio, segments speech with streaming VAD, transcribes it locally with faster-whisper, translates it, and shows bilingual subtitles in an always-on-top overlay. With recording on, browse a timestamped transcript afterwards and generate meeting notes in one click.
 
 > The UI is currently Chinese only. Labels below are given as「中文」(English).
 
@@ -52,11 +52,12 @@ Download from [Releases](https://github.com/MisterRabbit0w0/live-trans/releases)
 
 ## Quick start
 
-1. **Download a speech model**: open「语音识别」(Speech recognition) and click download in the model panel (a few hundred MB and up; needs access to Hugging Face). Models are not bundled.
+1. **Download a speech model** (local recognition only): open「语音识别」(Speech recognition) and click download in the model panel (a few hundred MB and up; needs access to Hugging Face). Models are not bundled. Skip this if you only use cloud transcription.
 2. **Set up translation**: in「翻译」(Translation), fill in Base URL, API key and model, and pick a target language (see [Translation](#translation)).
 3. **Pick an audio source** in「声音来源」(Audio source): whole system or a specific app.
-4. **Go**: click「应用设置」(Apply, `Ctrl + Enter`), start from「概览」(Overview), and the overlay appears.
-5. **Afterwards**: open「记录与纪要」(Records & notes) to generate and export notes.
+4. **Turn on recording if you want notes**: enable「保存翻译记录」(Save transcripts) in「通用」(General). It is off by default; without it nothing is saved and Records & notes stays empty.
+5. **Go**: click「应用设置」(Apply, `Ctrl + Enter`), start from「概览」(Overview), and the overlay appears.
+6. **Afterwards**: open「记录与纪要」(Records & notes) to generate and export notes. Sessions recorded with translation on are bilingual; mode 3 records contain the original text only.
 
 <!-- Demo GIF slot: docs/assets/quickstart.gif -->
 
@@ -65,9 +66,9 @@ Download from [Releases](https://github.com/MisterRabbit0w0/live-trans/releases)
 | Use case | Mode | What it does |
 |---|---|---|
 | International meetings, keep a record | 1 · Translate + record | Live bilingual subtitles, saved line by line |
-| Livestreams / raw videos | 2 · Translate only | Subtitles only, nothing written to disk |
+| Livestreams / raw videos | 2 · Translate only | Subtitles only, no session transcript saved |
 | Meeting minutes without spending tokens | 3 · Record only | No translation API calls while transcribing; large original-language subtitles |
-| Plain dictation | 4 · Original subtitles | High-sensitivity live captions |
+| Plain dictation | 4 · Original subtitles | Original-language captions only, no translation or recording |
 
 ## Recognition and translation
 
@@ -108,7 +109,7 @@ Both local and cloud use the OpenAI-compatible API — only Base URL / key / mod
 
 | Symptom | Check |
 |---|---|
-| No subtitles | Correct audio source? Volume too low (below -60 dBFS counts as silence)? Model downloaded? |
+| No subtitles | Correct audio source? Volume too low (below -60 dBFS the auto gain stops amplifying — raise the source volume, or lower「触发灵敏度 (VAD 阈值)」(VAD threshold) in Speech recognition)? Local model downloaded? |
 | Per-app capture misses audio | Process Loopback works best on Windows 11 / Build 20348+ |
 | High latency | Use a smaller model or a faster translation endpoint |
 | Bad translations | Check the target language; try a stronger model |
@@ -122,11 +123,11 @@ Both local and cloud use the OpenAI-compatible API — only Base URL / key / mod
   - **Cloud transcription**: if selected, audio goes to that service.
   - **Model download**: contacts Hugging Face.
 - With local recognition + local Ollama, everyday use needs no internet.
-- API keys stay in your local config and are never sent to the UI. No telemetry.
+- API keys are stored in plain text in your local config (`%APPDATA%\livetrans`) and only passed between local processes; they are never uploaded anywhere except the endpoint you configured. No telemetry.
 
 ## Development
 
-Requires Python 3.10+, Rust 1.85+, Node.js 18+.
+Requires Python 3.10+, Rust 1.85+, Node.js 22.12+ (24 recommended, same as CI).
 
 ```powershell
 git clone https://github.com/MisterRabbit0w0/live-trans.git
@@ -145,6 +146,7 @@ npm run tauri:dev          # or double-click start.bat in the repo root
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ```powershell
+pip install ruff==0.15.17   # same version as CI
 python -m unittest discover -s tests -v
 npm test --prefix desktop
 npm run check --prefix desktop
