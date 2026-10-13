@@ -1,251 +1,177 @@
+<div align="center">
+
 # LiveTrans
 
+**中文** | [English](README_EN.md)
+
+外语直播、生肉视频、网课和线上会议的实时双语悬浮字幕，附带 AI 会议纪要。
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-brightgreen.svg)](https://www.python.org/)
+[![Release](https://img.shields.io/github/v/release/MisterRabbit0w0/live-trans?include_prereleases)](https://github.com/MisterRabbit0w0/live-trans/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078d4.svg)](#安装)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-orange.svg)](https://tauri.app/)
 [![Svelte 5](https://img.shields.io/badge/Svelte-5-ff3e00.svg)](https://svelte.dev/)
 
-LiveTrans 是一款专为**外语直播、视频生肉、跨国网课及线上会议**打造的高性能实时语音转写、双语同传与 AI 会议纪要桌面应用。
+<!-- 截图位：docs/assets/overlay.png（字幕浮层叠在视频上的效果），见 docs/assets/README.md -->
 
-通过系统音频捕获与流式 VAD 分句，将演讲者语音实时转写为双语悬浮字幕，并提供全链路解耦的会话存盘与大模型智能纪要提炼。
+</div>
 
----
-
-## 🌟 核心特性
-
-- ⚡ **轻量自包含架构**：全面重构至 **Tauri v2 + Svelte 5**，告别传统 Python 桌面框架的庞大体积与高内存占用，响应灵敏迅速。
-- 🎨 **现代化纯平面设计 (Flat Design)**：移除臃肿高光、拟物伪元素与全屏模糊光斑，改用纯扁平色块、1px 细微边界线与几何同心圆角（`--lt-radius-*`）；由 Windows 11 DWM 统一接管原生窗口圆角裁剪，彻底杜绝双重圆角冲突。
-- 🔀 **四大运行模式自由解耦**：
-  - **模式 1（边翻译边记录）**：实时同传双语字幕 + 本地逐句对照存盘；
-  - **模式 2（仅实时翻译）**：看直播与生肉视频，实时字幕上屏，零磁盘垃圾；
-  - **模式 3（仅语音记录 / 会议速记）**：会议听写与整理，0 外部 API 调用、0 Token 消耗，字幕显示大字号原文；
-  - **模式 4（纯原文字幕）**：纯粹作为高灵敏度实时语音听写字幕器。
-  - *支持在运行中一键无缝热切，无需重启识别引擎。*
-- 📋 **AI 智能会议纪要与总结**：
-  - 复用配置的翻译模型接口，一键提炼生成：**主题与核心主旨**、**多议题重点讨论**、**关键结论**与 **Action Items 待办项**；
-  - 支持「完整会议纪要」与「极简速览（<200字）」双模式切换；
-  - 提供独立「记录与纪要」工作台，支持时间戳双语对照浏览、一键复制与格式化 Markdown 文件导出。
-- 🎙️ **多平台音频捕获与保守型 AGC**：
-  - **Windows**：WASAPI 系统环回（整个系统声音）或 Process Loopback（仅捕获指定软件声音，建议 Windows 11 / Build 20348+）；
-  - **macOS**：原生 ScreenCaptureKit 音频捕获；
-  - **Linux**：PulseAudio / PipeWire 输出设备监听源；
-  - **保守型自适应增益 (Conservative AGC)**：筑牢底噪门限冻结（<-60 dBFS 静音不放大）、快降慢升防抽吸、最大 6x 增益硬顶与软限幅防护，减少弱音被误切出的概率。
-- 🛡️ **双进程模型隔离**：faster-whisper 本地模型在独立的子进程中运行，通过标准输入输出二进制帧协议通信。模型意外故障不影响主窗口，退出后显存瞬间释放。
+LiveTrans 捕获系统音频，用流式 VAD 分句，经本地 faster-whisper 识别后翻译，把双语字幕置顶浮在任意画面上。会后可以在「记录与纪要」里按时间戳浏览双语对照，一键生成会议纪要。
 
 ---
 
-> **发行状态**：正式发行渠道为 Windows x64（NSIS 安装器与便携 ZIP，见 [构建与发布](docs/releasing.md)）。macOS / Linux 的音频捕获后端已具备源码实现，但未经过完整发行验收，仅视为实验性支持。
+## 核心特性
 
-## 🏛️ 项目系统架构
+- **系统级音频捕获**：不限来源，直播客户端、会议软件、播放器的声音都能翻。Windows 支持整机环回，也可以只捕获指定软件的声音。
+- **四种运行模式**，运行中可一键热切，不用重启识别引擎（见 [模式怎么选](#模式怎么选)）。
+- **AI 会议纪要**：提炼主题主旨、各议题要点、关键结论和 Action Items；支持「完整会议纪要」和「极简速览（<200 字）」，可导出 Markdown。
+- **本地识别**：faster-whisper 在独立子进程中运行，崩溃不影响主窗口，退出后释放显存；按空闲显存自动选模型档位。
+- **翻译接口自选**：本地 Ollama（全离线、免费），或任意 OpenAI 兼容的云端服务。
+- **轻量桌面壳**：Tauri v2 + Svelte 5，常驻系统托盘。
 
-LiveTrans 采用**三层异构多进程架构**：前端桌面壳体（Rust / Webview）、计算调度中枢（Python Sidecar）与推理工作进程（Model Worker）分层协作。
+<!-- 截图位：docs/assets/main-window.png（控制中心概览页）、docs/assets/records.png（记录与纪要工作台） -->
 
-```mermaid
-flowchart TB
-    subgraph UI ["桌面交互层 (Tauri v2 + Svelte 5)"]
-        direction TB
-        MainWin["主控制中心 (Main Window)<br/>• 2x2 状态概览与启停<br/>• 声音 / 识别 / 翻译设置<br/>• 记录与 AI 纪要工作台"]
-        SubWin["透明置顶字幕浮层 (Overlay Window)<br/>• DWM 无边框原生裁剪<br/>• 双语对照 / 动态字号 / 点击穿透"]
-        Tray["系统托盘 (System Tray)<br/>• 后台常驻 / 快捷显隐 / 状态同步"]
-        TauriCore["Tauri Rust 宿主内核 (src-tauri)<br/>• 原生窗口调度与 DWM 材质<br/>• 进程生命周期与 Sidecar 管理"]
+## 安装
 
-        MainWin <--> TauriCore
-        SubWin <--> TauriCore
-        Tray <--> TauriCore
-    end
+从 [Releases](https://github.com/MisterRabbit0w0/live-trans/releases) 下载对应版本：
 
-    subgraph IPC ["进程间通信 (IPC Bridge)"]
-        RPC["Newline-Delimited JSON-RPC 2.0 (Stdio Pipes)<br/>双向指令调度 + 异步事件推送流"]
-    end
+| 文件 | 说明 |
+|---|---|
+| `LiveTrans-x.y.z-windows-x64-setup.exe` | 安装版（NSIS），带开始菜单项和卸载程序 |
+| `LiveTrans-x.y.z-windows-x64-portable.zip` | 便携版，解压即用 |
+| `SHA256SUMS.txt` | 校验和，用于核对下载是否完整 |
 
-    subgraph Core ["Python 核心引擎 (livetrans.app)"]
-        direction TB
-        Server["RPC 协议网关 (app.server)<br/>• 请求分发调度<br/>• 异常隔离与安全退出"]
-        Coord["会话编排协调器 (app.runtime / session)<br/>• 阶段生命周期管理<br/>• 零锁并发与热切配置"]
+- 安装版和便携版共用 `%APPDATA%\livetrans` 里的配置。
+- 发行包只带 CPU 推理。要用 NVIDIA GPU 加速，请[从源码运行](#开发)并安装 `.[cuda]`。
+- 程序未做代码签名，首次运行时 Windows SmartScreen 可能拦截，选「更多信息 → 仍要运行」即可。
+- 0.1.0 的单文件 `standalone.exe` 从 0.2.0 起不再提供。
 
-        subgraph Pipeline ["解耦流水线 (Decoupled Pipeline)"]
-            AudioCap["音频捕获 (audio)<br/>• WASAPI / Process Loopback (Win)<br/>• ScreenCaptureKit (macOS)<br/>• PulseAudio / PipeWire (Linux)<br/>• Conservative AGC (自适应增益)"]
-            VAD["流式分句 (Silero VAD)<br/>• 动态软硬切分 (默认门限 0.35)"]
-            Transcriber["转写阶段 (Transcriber)<br/>• 调度 ASR 引擎输出带时间戳原文"]
-            TransStage["翻译阶段 (TranslationStage)<br/>• 异步并发队列 (Ollama / Cloud LLM)"]
-            RecordStage["记录阶段 (Transcript)<br/>• 本地 JSONL 追加持久化"]
-            SummaryEngine["AI 纪要引擎 (record.summary)<br/>• 主题主旨 / 讨论要点 / 待办提炼"]
+> **平台支持**：正式发行只有 Windows 10/11 x64。macOS（ScreenCaptureKit）和 Linux（PulseAudio / PipeWire）的音频后端已有源码实现，但没经过完整发行验收，属于实验性支持。
 
-            AudioCap --> VAD --> Transcriber
-            Transcriber --> TransStage
-            Transcriber --> RecordStage
-            RecordStage --> SummaryEngine
-        end
+## 快速上手
 
-        Server <--> Coord
-        Coord --> Pipeline
-    end
+1. **下载识别模型**：打开「语音识别」页，在模型面板点击下载（几百 MB 起，需要能访问 Hugging Face）。模型不随安装包分发，首次使用前必须先下载。
+2. **配置翻译**：在「翻译」页填写 Base URL、API Key 和模型名，选好目标语言（见 [翻译接口](#翻译接口)）。
+3. **选声音来源**：在「声音来源」页选择整机环回，或指定某个软件。
+4. **开始**：点「应用设置」（`Ctrl + Enter`），回到「概览」启动，字幕浮层就会出现。
+5. **会后整理**：到「记录与纪要」生成纪要并导出。
 
-    subgraph Worker ["独立模型工作进程 (livetrans.worker)"]
-        WorkerProc["faster-whisper 模型服务<br/>• 独立进程隔离 (Stdio 二进制帧协议)<br/>• 显存自动选档 (large-v3-turbo / small)<br/>• 异常崩溃秒级重启与显存安全释放"]
-    end
+<!-- 演示 GIF 位：docs/assets/quickstart.gif（从启动到字幕出现的全过程，建议 ≤ 15 秒） -->
 
-    TauriCore <==> RPC <==> Server
-    Transcriber <==>|"二进制帧协议"| WorkerProc
-```
+## 模式怎么选
 
----
-
-## 🗂️ 目录结构
-
-```
-live-trans/
-├── desktop/                       # Tauri v2 桌面客户端
-│   ├── src/                       # Svelte 5 前端工程
-│   │   ├── main/                  # 主控制中心 (概览、音频、ASR、翻译、记录、外观)
-│   │   ├── subtitle/              # 置顶悬浮双语字幕浮层
-│   │   ├── lib/                   # 状态管理、主题色生成与 JSON-RPC 桥接
-│   │   └── assets/                # 应用图标与矢量静态资源
-│   ├── src-tauri/                 # Tauri Rust 原生宿主
-│   │   ├── src/main.rs            # 窗口创建、系统托盘、Windows 11 DWM 控制
-│   │   ├── src/core.rs            # Python Sidecar 进程生命周期与管道通信
-│   │   ├── Cargo.toml             # Rust 依赖清单
-│   │   └── tauri.conf.json        # Tauri 窗口与安全权限配置
-│   └── package.json               # 前端依赖配置
-│
-├── livetrans/                     # Python 核心计算中枢
-│   ├── app/                       # RPC 服务端、控制器与运行时协调
-│   │   ├── server.py              # Newline-Delimited JSON-RPC 2.0 服务端
-│   │   ├── controller.py          # 应用状态与设置操作分发
-│   │   ├── runtime.py             # 会话生命周期与串行异步状态机
-│   │   └── records.py             # 记录存盘与历史管理服务
-│   ├── audio/                     # 跨平台系统音频环回与捕获
-│   │   ├── windows/               # WASAPI 与 Process Loopback API (Windows)
-│   │   ├── macos.py               # ScreenCaptureKit (macOS)
-│   │   ├── linux.py               # PulseAudio / PipeWire (Linux)
-│   │   └── vad.py                 # Silero VAD 动态流式分句与 Conservative AGC
-│   ├── asr/                       # 语音识别抽象与本地/云端客户端
-│   ├── translate/                 # 实时翻译抽象、并发队列与 OpenAI 兼容适配
-│   ├── record/                    # 会话持久化与 AI 会议纪要生成引擎
-│   ├── worker/                    # 独立 Whisper 模型运行时与进程帧协议
-│   ├── session.py                 # 阶段串联与事件调度装配
-│   ├── transcriber.py             # 声音采集 → VAD → ASR 解耦流水线
-│   └── config.py                  # 配置模型与原子保存
-│
-├── scripts/                       # 辅助诊断与开发排查工具
-├── tests/                         # 自动化单元测试套件
-├── packaging/                     # 发行依赖锁定与安装打包脚本
-├── start.bat                      # Windows 一键编译并启动脚本
-└── pyproject.toml                 # Python 项目元数据与依赖定义
-```
-
----
-
-## 🚀 快速上手
-
-### 1. 环境准备
-
-| 组件 | 版本要求 | 用途 |
+| 场景 | 推荐模式 | 说明 |
 |---|---|---|
-| **Python** | 3.10+ | 核心音频捕获、ASR 与翻译引擎 |
-| **Rust / Cargo** | 1.85+ | 编译 Tauri 桌面端宿主（`livetrans.exe`） |
-| **Node.js** | 18+ | 构建 Svelte 5 前端资源 |
+| 跨国会议，边听边留档 | 1 · 边翻译边记录 | 实时双语字幕，同时逐句存盘 |
+| 外语直播 / 生肉视频 | 2 · 仅实时翻译 | 只显示字幕，不写磁盘 |
+| 会议速记，不想花 Token | 3 · 仅语音记录 | 识别期间不调用翻译接口，字幕显示大字号原文 |
+| 只看原文听写 | 4 · 纯原文字幕 | 高灵敏度实时听写 |
 
-### 2. 克隆仓库与配置 Python 环境
+## 识别与翻译设置
+
+### 语音识别
+
+- **本地 faster-whisper（默认）**：「自动」档按空闲显存选择：
+  - 显存 ≥ 5000 MB：`large-v3-turbo`（CUDA float16）
+  - 显存 2000–4999 MB：`small`（CUDA float16）
+  - 没有可用 GPU：`small`（CPU int8）
+- **云端转写**：任意兼容 OpenAI `/audio/transcriptions` 的服务。选这个时**音频会发到该服务**。
+- 识别语言一般选「自动」。
+
+### 翻译接口
+
+本地 Ollama 和云端服务都走 OpenAI 兼容接口，只是 Base URL / Key / 模型不同：
+
+- **本地 Ollama（默认，免费、离线）**：安装 [Ollama](https://ollama.com/) 后执行 `ollama pull qwen2.5:7b-instruct`（显存紧张可以用 `qwen2.5:3b-instruct`）。默认配置可以直接用：Base URL `http://localhost:11434/v1`，Key `ollama`。
+- **云端**：
+
+| 服务商 | Base URL | 模型示例 |
+|---|---|---|
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| Groq（有免费额度） | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+
+内置 19 种目标语言（中文简繁、英、日、韩、法、德、西、葡、俄等），AI 纪要也用这里配置的接口。
+
+<!-- TODO(#22 合入后)：补充「翻译上下文记忆与失败重试」说明 -->
+## 字幕浮层与快捷操作
+
+- **拖动**：按住浮层上文字以外的区域拖到任意位置。
+- **字号**：鼠标停在字幕上按 `Ctrl + 滚轮` 调节；「字幕外观」页还能设置是否显示原文、同屏条数、背景不透明度和浮层宽度。
+- **置顶**：浮层始终在最上层。目前**不支持**点击穿透。
+- **控制中心**：`Ctrl + Enter` 应用设置，`Ctrl + Q` 退出并释放模型进程。
+- **托盘**：关闭控制中心只是隐藏到托盘；单击托盘图标重新打开，右键菜单可以开始/停止翻译、切换字幕显示或退出。
+
+## 记录与 AI 纪要
+
+模式 1 / 3 下（「通用」页的「保存翻译记录」开着时）会话会存到本地，「记录与纪要」工作台按会内时间戳列出双语对照：
+
+- 一键复制，或导出为 Markdown；
+- 生成「完整会议纪要」或「极简速览（<200 字）」，内容包括主题与核心主旨、各议题要点、关键结论和 Action Items；
+- 纪要用的是「翻译」页配置的接口，选云端服务时记录文本会发给该服务。
+
+## 故障排查
+
+| 现象 | 先检查 |
+|---|---|
+| 没有字幕 | 声音来源选对没有（整机环回还是指定软件）；音量是否过小（低于 -60 dBFS 会按静音处理）；模型下载好没有 |
+| 只能捕获部分软件 | 指定软件捕获（Process Loopback）建议在 Windows 11 / Build 20348+ 上用 |
+| 延迟高 | 换小一档的模型；换响应更快的翻译接口 |
+| 译文不对 | 检查目标语言；换更强的翻译模型 |
+| 其他异常 | 在「通用」页点「打开日志目录」，把日志附在 [Issue](https://github.com/MisterRabbit0w0/live-trans/issues) 里（提交前请检查有没有密钥） |
+
+## 隐私
+
+- 音频捕获、VAD 分句和本地识别都在本机完成。
+- 会发到外部的数据只取决于你的配置：
+  - **翻译 / 纪要**：识别出的文本发给「翻译」页的接口。默认是本地 Ollama，不出本机。
+  - **云端识别**：选了它，音频会发给对应服务。
+  - **下载模型**：会访问 Hugging Face。
+- 本地识别 + 本地 Ollama 时，日常使用不需要联网。
+- API Key 只保存在本机配置里，不会下发到界面。
+
+## 常见问题
+
+**和浏览器字幕插件有什么区别？**
+LiveTrans 捕获的是系统级音频，所以不限浏览器，桌面客户端、会议软件和播放器都能用。
+
+**能用 GPU 吗？**
+发行包只有 CPU 推理。有 NVIDIA 显卡的话从源码安装 `.[cuda]`，「自动」档会按显存选更大的模型。
+
+**会收集使用数据吗？**
+不会，应用没有遥测。
+
+## 开发
+
+需要 Python 3.10+、Rust 1.85+、Node.js 18+。
 
 ```powershell
-# 1. 克隆代码仓库
 git clone https://github.com/MisterRabbit0w0/live-trans.git
 cd live-trans
-
-# 2. 创建并激活虚拟环境
 python -m venv .venv
 .venv\Scripts\activate
+pip install -e ".[cuda]"   # 只用 CPU 或纯云端时改成 pip install -e .
 
-# 3. 安装依赖
-# 有 NVIDIA 独立显卡（推荐，支持 CUDA 硬件加速）：
-pip install -e ".[cuda]"
-
-# 仅使用 CPU 或纯云端 API：
-pip install -e .
+cd desktop
+npm ci
+npm run tauri:dev          # 也可以在仓库根目录双击 start.bat
 ```
 
-### 3. 编译并启动
+- 架构与目录结构：[docs/architecture.md](docs/architecture.md)
+- 构建发行包（NSIS + 便携 ZIP）和发布流程：[docs/releasing.md](docs/releasing.md)。单独 `cargo build --release` 出来的壳没有随包核心，不能当发行产物用。
+- 界面验收清单：[docs/frontend-validation.md](docs/frontend-validation.md)
+- 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md)
 
-- **一键运行（推荐）**：  
-  直接双击根目录的 **`start.bat`**（开发入口）。  
-  *前置条件：已按上一步创建 `.venv`，并在 `desktop/` 执行过 `npm ci`；脚本会启动 `npm run tauri:dev` 进入开发模式。*
-
-- **手动开发模式（支持前端热重载）**：
-  ```powershell
-  cd desktop
-  npm ci
-  npm run tauri:dev
-  ```
-
-- **发行产物构建（NSIS 安装器 + 便携 ZIP）**：  
-  完整流程见 [构建与发布](docs/releasing.md)：先冻结 Python 核心（PyInstaller），再执行 Tauri 生产构建。单独 `cargo build --release` 得到的壳缺少随包核心，不能当作发行产物。
-
----
-
-## ⚙️ 模型与服务接入
-
-### 语音识别 (ASR)
-
-- **本地 faster-whisper（默认，推荐）**：  
-  在主控制中心「语音识别」页面可一键下载所需模型。系统会根据空闲显存智能自动匹配最适配档位：
-  - 显存 $\ge$ 5000MB：`large-v3-turbo`（CUDA float16）
-  - 显存 2000~4999MB：`small`（CUDA float16）
-  - 无可用 GPU：`small`（CPU int8）
-- **云端转写**：支持填入任意兼容 OpenAI 转写格式的 `base_url` 与 API 密钥。
-
-### 实时翻译与会议纪要
-
-- **选项 A：本地 Ollama（免费、私密）**：
-  1. 安装并启动 [Ollama](https://ollama.com/)；
-  2. 拉取高质量翻译模型：`ollama pull qwen2.5:7b-instruct`（显存紧凑可选 `qwen2.5:3b-instruct`）；
-  3. 控制中心「实时翻译」选择本地 Ollama 即可。
-- **选项 B：云端大模型 API**：  
-  支持 DeepSeek、Groq、OpenAI 等任意兼容接口。在控制中心填入 Base URL、API Key 与 Model 名称后点击「应用设置」即可生效：
-
-| 服务商 | Base URL | 推荐模型示例 |
-|---|---|---|
-| **DeepSeek** | `https://api.deepseek.com/v1` | `deepseek-chat` |
-| **Groq** (提供免费额度) | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` |
-| **OpenAI** | `https://api.openai.com/v1` | `gpt-4o-mini` |
-
----
-
-## ⌨️ 快捷操作与交互指南
-
-- **悬浮字幕交互**：
-  - 拖拽移动：按住字幕浮层任意非文字区域即可拖动位置；
-  - 缩放字号：鼠标悬浮在字幕上，使用 **`Ctrl + 滚轮`** 可无级调节字体大小；
-  - 穿透与置顶：字幕窗口默认置顶显示，支持在外观设置中启闭鼠标穿透与背景不透明度。
-- **主窗口与托盘**：
-  - **`Ctrl + Enter`**：快速保存并应用当前页面的设置草稿；
-  - **`Ctrl + ,`**：快速切换到通用设置；
-  - **`Ctrl + Q`**：安全退出应用并优雅释放模型进程；
-  - 关闭主窗口默认最小化到系统托盘，双击托盘图标可快速调出。
-
----
-
-## 🧪 测试与质量保证
-
-本项目配备严格的双端自动化回归测试与静态代码诊断套件：
+### 测试与质量保证
 
 ```powershell
-# 1. 运行 Python 后端回归测试（百余项离线用例）
-python -m unittest discover -s tests -v
-
-# 2. 运行前端 Vitest 单元测试
-npm test --prefix desktop
-
-# 3. 运行 Svelte 前端类型诊断与 Rust 测试 / 静态检查
-npm run check --prefix desktop
+python -m unittest discover -s tests -v           # Python 离线回归
+npm test --prefix desktop                         # Vitest
+npm run check --prefix desktop                    # svelte-check
 cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
-
-# 4. 运行 Python 静态代码规范检查
 ruff check .
 ```
 
----
+## 开源许可
 
-## 📄 开源许可
-
-本项目遵循 [MIT License](LICENSE) 开源协议。发行的第三方组件与依赖遵循其各自开源协议，详见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+[MIT License](LICENSE)。第三方组件遵循各自的许可证，详见 [第三方声明](THIRD_PARTY_NOTICES.md)。
