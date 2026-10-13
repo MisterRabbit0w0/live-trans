@@ -58,15 +58,35 @@
   let viewport: HTMLElement | undefined = $state();
   let lines: HTMLElement | undefined = $state();
 
-  // Keep the newest row visible (Flickable contentY behavior).
+  // 用户往上滚动看历史字幕时不再被新字幕拽回底部。
+  let userPinned = $state(false);
+  const PIN_THRESHOLD_PX = 48;
+
+  // Keep the newest row visible (Flickable contentY behavior),
+  // unless the user scrolled up to read history.
   $effect(() => {
     void core.subtitles;
     void maxLines;
     void fontSize;
+    if (userPinned) return;
     tick().then(() => {
       if (viewport) viewport.scrollTop = viewport.scrollHeight;
     });
   });
+
+  function onViewportScroll() {
+    if (!viewport) return;
+    const distFromBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    userPinned = distFromBottom > PIN_THRESHOLD_PX;
+  }
+
+  function jumpToLatest() {
+    userPinned = false;
+    tick().then(() => {
+      if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    });
+  }
 
   // Resize the native window to content: min(content + 32, 0.6 * availHeight).
   onMount(() => {
@@ -109,7 +129,7 @@
     style:width="{width}px"
     style:background={alpha > 0 ? `rgba(6 8 12 / ${alpha})` : "transparent"}
   >
-    <div class="viewport" bind:this={viewport}>
+    <div class="viewport" bind:this={viewport} onscroll={onViewportScroll}>
       <div class="lines" bind:this={lines}>
         {#each rows as row (row.id)}
           <SubtitleEntry
@@ -125,6 +145,9 @@
         {/if}
       </div>
     </div>
+    {#if userPinned}
+      <button class="jump-latest" onclick={jumpToLatest}>↓ 回到最新</button>
+    {/if}
     <div class="toolbar">
       <button class="tool" onclick={() => void showControlCenter()}>
         控制中心
@@ -223,6 +246,25 @@
   .tool:hover {
     background: rgb(40 48 64 / 0.95);
     border-color: rgb(255 255 255 / 0.25);
+    color: #fff;
+  }
+  .jump-latest {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: var(--lt-radius-sm);
+    background: rgb(20 25 35 / 0.9);
+    color: #dce5f2;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .jump-latest:hover {
+    background: rgb(40 48 64 / 0.95);
     color: #fff;
   }
 </style>
