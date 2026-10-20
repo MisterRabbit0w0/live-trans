@@ -584,7 +584,7 @@ class LifecycleTests(unittest.TestCase):
                 closed.append("asr")
 
         class Translator:
-            def translate(self, text, source_language=""):
+            def translate(self, text, source_language="", history=None):
                 if translated:
                     translated.set()
                 if translate_delay:
@@ -625,7 +625,7 @@ class LifecycleTests(unittest.TestCase):
             def __init__(self, name):
                 self.name = name
 
-            def translate(self, text, source_language=""):
+            def translate(self, text, source_language="", history=None):
                 if self.name == "old":
                     release.wait(3)
                 return f"{self.name}:{text}"
