@@ -65,20 +65,27 @@
   // Keep the newest row visible (Flickable contentY behavior),
   // unless the user scrolled up to read history.
   $effect(() => {
+    const count = core.subtitles.length;
     void core.subtitles;
     void maxLines;
     void fontSize;
-    if (userPinned) return;
     tick().then(() => {
-      if (viewport) viewport.scrollTop = viewport.scrollHeight;
+      if (!viewport) return;
+      // 历史被清空或内容不再溢出时，没有可回看的内容（也可能不会触发
+      // scroll 事件），解除固定，避免下一场会话卡在顶部不跟随。
+      const maxScroll = viewport.scrollHeight - viewport.clientHeight;
+      if (count === 0 || maxScroll <= 1) userPinned = false;
+      if (!userPinned) viewport.scrollTop = viewport.scrollHeight;
     });
   });
 
   function onViewportScroll() {
     if (!viewport) return;
-    const distFromBottom =
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    userPinned = distFromBottom > PIN_THRESHOLD_PX;
+    const maxScroll = viewport.scrollHeight - viewport.clientHeight;
+    const distFromBottom = maxScroll - viewport.scrollTop;
+    // 溢出很浅（<= 2 * 阈值）时按比例缩小容差，保证滚到顶部一定能进入固定状态。
+    const threshold = Math.min(PIN_THRESHOLD_PX, maxScroll / 2);
+    userPinned = maxScroll > 1 && distFromBottom > threshold;
   }
 
   function jumpToLatest() {
@@ -104,7 +111,8 @@
 
   function onMouseDown(event: MouseEvent) {
     if (event.button !== 0) return;
-    if ((event.target as HTMLElement).closest(".toolbar")) return;
+    // 按钮区域不触发窗口拖动，否则 startDragging 会吞掉按钮的 click。
+    if ((event.target as HTMLElement).closest(".toolbar, .jump-latest")) return;
     void win?.startDragging();
   }
 
