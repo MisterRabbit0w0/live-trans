@@ -31,6 +31,8 @@ body {
 }
 
 body {
+  /* Keeps the z-index:-1 glow (body::before) above the body background. */
+  isolation: isolate;
   font-family: var(--lt-font);
   font-size: 14px;
   color: var(--md-sys-color-on-surface);
@@ -38,30 +40,51 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Window backdrop modes — set by appearance.svelte.ts on <html>. */
-
-/* Window backdrop modes — clean flat surfaces with restrained acrylic when available. */
-html[data-material="css"] body,
-html[data-material="solid"] body {
+/* Window backdrop — the main window is always an opaque theme surface; only
+   the subtitle overlay uses native materials (see appearance.svelte.ts). */
+body {
   background: var(--md-sys-color-surface-container-low);
 }
-
-/* Acrylic: subtle translucent surface wash over system compositor */
-html[data-material="native"] body {
-  background: color-mix(
-    in oklab,
-    var(--md-sys-color-surface) 65%,
-    transparent
-  );
-}
-html[data-material="native"][data-theme="dark"] body {
-  background: color-mix(
-    in oklab,
-    var(--md-sys-color-surface) 75%,
-    transparent
-  );
+html[data-theme="dark"] body {
+  background: var(--md-sys-color-surface-container);
 }
 
+/* App-drawn glow behind translucent panels: gives panels something to frost
+   over without depending on the wallpaper or windows behind the app. */
+html[data-material="css"]:not([data-contrast="high"]):not([data-window="subtitle"])
+  body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      60% 55% at 12% 8%,
+      color-mix(in oklab, var(--md-sys-color-primary) var(--lt-glow-a), transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      55% 60% at 92% 96%,
+      color-mix(in oklab, var(--md-sys-color-tertiary) var(--lt-glow-b), transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      40% 45% at 85% 18%,
+      color-mix(in oklab, var(--md-sys-color-secondary) var(--lt-glow-c), transparent),
+      transparent 70%
+    );
+}
+html {
+  --lt-glow-a: 22%;
+  --lt-glow-b: 16%;
+  --lt-glow-c: 10%;
+}
+html[data-theme="dark"] {
+  --lt-glow-a: 18%;
+  --lt-glow-b: 13%;
+  --lt-glow-c: 9%;
+}
 
 /* The subtitle window is fully transparent; it paints its own backdrop. */
 html[data-window="subtitle"] body {

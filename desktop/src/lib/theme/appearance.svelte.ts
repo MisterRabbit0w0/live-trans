@@ -2,7 +2,7 @@
  * Shared appearance driver for both webviews: watches the committed UI
  * settings, OS appearance and media queries, then generates the Material 3
  * theme, selects the material mode (native/css/solid) and keeps the native
- * window backdrop in sync.
+ * window backdrop in sync (subtitle overlay only; the main window is opaque).
  */
 import { core } from "../store.svelte";
 import {
@@ -94,8 +94,13 @@ export function initAppearance(
         !highContrast,
     );
     const reduceMotion = $derived(!!ui?.reduce_motion || flags.motion);
+    // The main window always paints opaque theme surfaces: native backdrops
+    // sample whatever is behind the window (or the wallpaper), so its look
+    // would drift with the desktop. Only the subtitle overlay uses them.
     const materialEnabled = $derived(
-      glassAllowed && (options.materialEnabled?.() ?? true),
+      windowLabel === "subtitle" &&
+        glassAllowed &&
+        (options.materialEnabled?.() ?? true),
     );
 
     // Regenerate and apply theme variables.

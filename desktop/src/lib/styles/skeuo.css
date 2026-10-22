@@ -29,40 +29,44 @@
 html[data-theme="dark"] .glass,
 html[data-theme="dark"] .lt-panel,
 html[data-theme="dark"] .lt-card {
-  background: var(--md-sys-color-surface-container);
+  background: var(--md-sys-color-surface-container-high);
   border-color: var(--md-sys-color-outline-variant);
   box-shadow: none;
 }
 
-/* Native Acrylic: subtle translucent surface wash with clean flat outline */
-html[data-material="native"]:not([data-theme="dark"]) .glass,
-html[data-material="native"]:not([data-theme="dark"]) .lt-panel,
-html[data-material="native"]:not([data-theme="dark"]) .lt-card {
-  background: color-mix(
-    in oklab,
-    var(--md-sys-color-surface-container-low) 88%,
-    transparent
-  );
-  border-color: color-mix(
-    in oklab,
-    var(--md-sys-color-outline-variant) 80%,
-    transparent
-  );
+/* Frosted panels over the app-drawn glow (base.css). Cards live inside the
+   masked scroller, where backdrop-filter cannot reach the glow, so they are
+   translucent only; top-level bars (.lt-frost) also blur. */
+html[data-material="css"]:not([data-contrast="high"]) {
+  & .glass,
+  & .lt-panel,
+  & .lt-card {
+    background: color-mix(
+      in oklab,
+      var(--md-sys-color-surface-container-lowest) 62%,
+      transparent
+    );
+    border-color: color-mix(
+      in oklab,
+      var(--md-sys-color-outline-variant) 70%,
+      transparent
+    );
+  }
+  & .lt-frost {
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+  }
 }
-
-html[data-material="native"][data-theme="dark"] .glass,
-html[data-material="native"][data-theme="dark"] .lt-panel,
-html[data-material="native"][data-theme="dark"] .lt-card {
-  background: color-mix(
-    in oklab,
-    var(--md-sys-color-surface-container) 85%,
-    transparent
-  );
-  border-color: color-mix(
-    in oklab,
-    var(--md-sys-color-outline-variant) 70%,
-    transparent
-  );
+html[data-material="css"][data-theme="dark"]:not([data-contrast="high"]) {
+  & .glass,
+  & .lt-panel,
+  & .lt-card {
+    background: color-mix(
+      in oklab,
+      var(--md-sys-color-surface-container-high) 72%,
+      transparent
+    );
+  }
 }
 
 /* Solid mode and high contrast */

@@ -5,6 +5,7 @@
   "identifier": "io.github.misterrabbit0w0.livetrans",
   "build": {
     "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "beforeBundleCommand": "python ../scripts/check_bundled_core.py"

@@ -28,6 +28,15 @@
       ? readBool("record.enabled", false)
       : (app?.recording ?? false),
   );
+  const recordLabel = $derived(
+    app?.recording
+      ? isPaused
+        ? "已暂停"
+        : "录制中"
+      : recordOn
+        ? "已开启"
+        : "未开启",
+  );
 
   const actionStem = $derived(
     translateOn && recordOn
@@ -155,7 +164,7 @@
         <Icon name="document" size={16} />
         <span class="card-title">记录与纪要</span>
         <span class="status-tag" class:active={recordOn}>
-          {recordOn ? "录制中" : "未开启"}
+          {recordLabel}
         </span>
       </div>
       <p class="card-value">{recordOn ? "自动保存会话" : "未开启保存"}</p>
