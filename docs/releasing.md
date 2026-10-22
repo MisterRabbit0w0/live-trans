@@ -44,13 +44,15 @@ Release 使用同一标签下的可复用工作流，不根据另一个分支的
 
 ## 版本管理
 
-`pyproject.toml` 是版本唯一来源。`scripts/bump_version.py X.Y.Z` 同步四处清单，`--check` 校验漂移（CI 每提交执行）。日常提交遵循 Conventional Commits 后，release-please 自动维护版本 PR 与 `CHANGELOG.md`。
+`pyproject.toml` 是应用版本唯一来源。先修改其中的版本，再运行 `scripts/bump_version.py X.Y.Z` 同步桌面清单与 npm / Cargo 锁文件，`--check` 校验漂移（CI 每提交执行）。release-please 通过 `extra-files` 同步相同文件：Cargo 清单显式指定 `[package].version`，npm 锁文件同时更新顶层与根包版本，Cargo 锁文件只更新 `livetrans-desktop`，不改依赖版本。TOML updater 会包装标量值，因此 Cargo 锁文件的 JSONPath 使用 `@.name.value` 筛选包名。
+
+`.release-please-manifest.json` 记录 release-please 认为已发布的版本，并在版本 PR 中写入待发布版本；它不是手动升版入口。首次发布 0.2.0 前，应用清单已提前写成 0.2.0，因此本次版本 PR 显式校正为 0.2.0，并同步标题、正文、manifest 与 CHANGELOG；合并后 release-please 创建 `v0.2.0`。以后让机器人在版本 PR 中更新 manifest，避免提前写入下一版而跳号。机器人从 `main` 读取配置；本次 PR 合并前若 `main` 再次更新，需复核机器人重生成的版本。
 
 1.0 之前 minor 版本对应路线图主题（0.2 能交付、0.3 低延迟……），只在该主题达到完成标准时升级。因此 release-please 配置为 1.0 前 `feat` 只升 patch、破坏性变更只升 minor；进入下一主题时在合入提交正文加 `Release-As: 0.X.0` 脚注显式指定。release-please 以最近的版本标签为起点汇总提交，当前版本未打标签时生成的版本 PR 会把更早的提交重复计入，不应合入。
 
 ## 发布步骤
 
-1. 在分支中完成改动并合入 `main`。合入后 `release-please.yml` 工作流会根据 Conventional Commits 自动维护版本 PR（更新 `pyproject.toml`、桌面与 Rust 清单及 `CHANGELOG.md`）；审查并合入该 PR 得到待发布版本。首个通过验收的版本（当前为 0.2.0，清单已就位）跳过这一步，直接从第 2 步开始。
+1. 在分支中完成改动并合入 `main`。合入后 `release-please.yml` 工作流会根据 Conventional Commits 自动维护版本 PR（更新 `pyproject.toml`、桌面与 Rust 清单、锁文件及 `CHANGELOG.md`）；核对标题、正文与所有清单中的目标版本，审查并合入该 PR 得到待发布版本。
 2. 手动运行 `Windows packages`，下载 Actions 产物，按 [界面验收清单](frontend-validation.md) 检查安装、卸载和功能。
 3. 在通过检查的提交上创建 `vX.Y.Z` 标签并推送。不要重新指向已经发布的标签。
 4. 等待 `Release` 的版本检查、CI 和 Windows 构建完成，下载草稿附件复核版本与 SHA-256。

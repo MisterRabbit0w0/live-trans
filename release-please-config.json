@@ -9,8 +9,27 @@
       "include-component-in-tag": false,
       "extra-files": [
         "desktop/package.json",
+        {
+          "type": "json",
+          "path": "desktop/package-lock.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "desktop/package-lock.json",
+          "jsonpath": "$.packages[''].version"
+        },
         "desktop/src-tauri/tauri.conf.json",
-        "desktop/src-tauri/Cargo.toml"
+        {
+          "type": "toml",
+          "path": "desktop/src-tauri/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "desktop/src-tauri/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='livetrans-desktop')].version"
+        }
       ]
     }
   }
