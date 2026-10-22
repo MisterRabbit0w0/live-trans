@@ -35,28 +35,37 @@ CPU 发行包不包含 NVIDIA CUDA 库。自动识别模式选择 CPU；需要 C
 |---|---|---|
 | CI / `lint.yml` | 分支推送、PR、手动调用、Release 调用 | Ruff、版本一致性（`bump_version.py --check`）、Tauri npm / Rust 版本对齐（`check_tauri_versions.py`）、公开文件 / 历史脱敏检查、Gitleaks、离线回归、wheel / sdist、Vitest / svelte-check / vite build、cargo test / clippy |
 | Windows packages / `windows.yml` | 手动调用、Release 调用 | NSIS 安装器、便携 ZIP、许可证归档、版本和校验清单（构建内含发行布局静态检查） |
-| Release / `release.yml` | 推送 `v*` 标签 | 检查和构建全部通过后创建 Release 草稿 |
-| Release Please / `release-please.yml` | 推送 `main`、手动调用 | 按 Conventional Commits 维护版本 / CHANGELOG PR |
+| Release / `release.yml` | 推送 `v*` 标签、Release Please 调用、手动指定已有标签 | 检查和构建全部通过后上传 Release 附件；不存在 Release 时创建草稿 |
+| Release Please / `release-please.yml` | 推送 `main`、手动调用 | 按 Conventional Commits 维护版本 / CHANGELOG PR；合并后创建标签与 Release 草稿，并直接调用打包流程 |
 
 第三方 Actions 固定到完整提交 SHA，由 Dependabot（github-actions / npm / cargo / pip）提醒更新。Gitleaks 下载固定版本并核对 SHA-256。PR 检查仅有仓库读取权限，不接收发布密钥；仅最后创建草稿的任务有 `contents: write` 权限。
 
-Release 使用同一标签下的可复用工作流，不根据另一个分支的历史 CI 成功状态放行。标签与四处清单（`pyproject.toml`、`desktop/package.json`、`desktop/src-tauri/tauri.conf.json`、`desktop/src-tauri/Cargo.toml`）版本必须一致，由 `release_artifacts.py --validate-tag` 在发布前强制校验；产物集合、Windows 校验清单和构建提交均需匹配。工作流不覆盖同名发布附件。
+Release 先解析并校验指定标签，再将该提交 SHA 传给 CI、Windows 构建与附件验证步骤，不根据另一个分支的历史 CI 成功状态放行。标签与应用清单及锁文件版本必须一致，由 `release_artifacts.py --validate-tag` 在发布前强制校验；产物集合、Windows 校验清单和构建提交均需匹配。工作流不覆盖同名附件，也不改变已有 Release 的正文或发布状态。
+
+默认 `GITHUB_TOKEN` 创建的标签不会触发新的标签推送工作流。因此 Release Please 通过 `release_created` / `tag_name` 输出直接调用 `Release`，不依赖标签事件，也不需要另配 PAT。`draft: true` 保留人工验收；`force-tag-creation: true` 确保草稿阶段标签已经存在，打包流程可以按标签检出源码。
 
 ## 版本管理
 
 `pyproject.toml` 是应用版本唯一来源。先修改其中的版本，再运行 `scripts/bump_version.py X.Y.Z` 同步桌面清单与 npm / Cargo 锁文件，`--check` 校验漂移（CI 每提交执行）。release-please 通过 `extra-files` 同步相同文件：Cargo 清单显式指定 `[package].version`，npm 锁文件同时更新顶层与根包版本，Cargo 锁文件只更新 `livetrans-desktop`，不改依赖版本。TOML updater 会包装标量值，因此 Cargo 锁文件的 JSONPath 使用 `@.name.value` 筛选包名。
 
-`.release-please-manifest.json` 记录 release-please 认为已发布的版本，并在版本 PR 中写入待发布版本；它不是手动升版入口。首次发布 0.2.0 前，应用清单已提前写成 0.2.0，因此本次版本 PR 显式校正为 0.2.0，并同步标题、正文、manifest 与 CHANGELOG；合并后 release-please 创建 `v0.2.0`。以后让机器人在版本 PR 中更新 manifest，避免提前写入下一版而跳号。机器人从 `main` 读取配置；本次 PR 合并前若 `main` 再次更新，需复核机器人重生成的版本。
+`.release-please-manifest.json` 记录 release-please 认为已发布的版本，并在版本 PR 中写入待发布版本；它不是手动升版入口。让机器人在版本 PR 中更新 manifest，避免提前写入下一版而跳号。应用清单、manifest、版本 PR 标题、正文和 CHANGELOG 的版本必须一致。
 
 1.0 之前 minor 版本对应路线图主题（0.2 能交付、0.3 低延迟……），只在该主题达到完成标准时升级。因此 release-please 配置为 1.0 前 `feat` 只升 patch、破坏性变更只升 minor；进入下一主题时在合入提交正文加 `Release-As: 0.X.0` 脚注显式指定。release-please 以最近的版本标签为起点汇总提交，当前版本未打标签时生成的版本 PR 会把更早的提交重复计入，不应合入。
 
 ## 发布步骤
 
-1. 在分支中完成改动并合入 `main`。合入后 `release-please.yml` 工作流会根据 Conventional Commits 自动维护版本 PR（更新 `pyproject.toml`、桌面与 Rust 清单、锁文件及 `CHANGELOG.md`）；核对标题、正文与所有清单中的目标版本，审查并合入该 PR 得到待发布版本。
-2. 手动运行 `Windows packages`，下载 Actions 产物，按 [界面验收清单](frontend-validation.md) 检查安装、卸载和功能。
-3. 在通过检查的提交上创建 `vX.Y.Z` 标签并推送。不要重新指向已经发布的标签。
-4. 等待 `Release` 的版本检查、CI 和 Windows 构建完成，下载草稿附件复核版本与 SHA-256。
-5. 补充版本说明和已知问题，再手动发布草稿。版本说明写在 Release 正文里，中英双语（中文在前，英文在后）；`CHANGELOG.md` 由 release-please 生成，不要手工加英文。
+1. 在分支中完成改动并合入 `main`。release-please 自动维护版本 PR（更新 `pyproject.toml`、桌面与 Rust 清单、锁文件及 `CHANGELOG.md`）；核对标题、正文与所有清单中的目标版本，审查并合入该 PR。
+2. Release Please 创建 `vX.Y.Z` 标签和 Release 草稿，随后直接调用 `Release`。不要重复打标或重指已有标签。
+3. 等待版本检查、CI 和 Windows 构建完成，下载草稿附件复核版本与 SHA-256，按 [界面验收清单](frontend-validation.md) 检查安装、卸载和功能。
+4. 补充版本说明和已知问题，再手动发布草稿。版本说明写在 Release 正文里，中英双语（中文在前，英文在后）；`CHANGELOG.md` 由 release-please 生成，不要手工加英文。
+
+已有标签但附件缺失时，从包含恢复入口的分支运行完整流程，例如：
+
+```powershell
+gh workflow run release.yml --ref main -f tag=v0.2.0
+```
+
+工作流定义来自指定分支，应用源码始终来自 `tag` 指定的提交。此入口可以为旧标签补包，无需移动标签。已有同名附件时流程会报错，不会覆盖；单独运行 `Windows packages` 只生成 Actions 产物，不上传 Release。
 
 当前没有代码签名证书配置，产物为未签名程序。SHA-256 用于检查下载内容一致性，不能替代发布者签名。
 
