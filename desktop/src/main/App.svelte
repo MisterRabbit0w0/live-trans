@@ -195,7 +195,7 @@
   </header>
 
   <div class="body">
-    <nav class="sidebar lt-panel" aria-label="主导航">
+    <nav class="sidebar lt-panel lt-frost" aria-label="主导航">
       {#each PAGES as page, index (index)}
         <button
           class="lt-nav-item nav"
@@ -266,7 +266,7 @@
         {/key}
       </div>
 
-      <footer class="footer lt-panel">
+      <footer class="footer lt-panel lt-frost">
         <Icon
           name={dirty ? "settings" : "check"}
           size={16}
@@ -382,8 +382,6 @@
     padding: 10px;
     gap: 4px;
     border-radius: var(--lt-radius-card);
-    background: var(--md-sys-color-surface-container);
-    border: 1px solid var(--md-sys-color-outline-variant);
   }
   .nav {
     position: relative;
@@ -482,8 +480,6 @@
     height: 52px;
     padding: 8px 12px;
     border-radius: var(--lt-radius-card);
-    background: var(--md-sys-color-surface-container);
-    border: 1px solid var(--md-sys-color-outline-variant);
   }
   .footer :global(.icon) {
     color: var(--md-sys-color-on-surface-variant);

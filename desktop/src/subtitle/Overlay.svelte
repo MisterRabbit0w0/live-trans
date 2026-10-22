@@ -58,15 +58,42 @@
   let viewport: HTMLElement | undefined = $state();
   let lines: HTMLElement | undefined = $state();
 
-  // Keep the newest row visible (Flickable contentY behavior).
+  // 用户往上滚动看历史字幕时不再被新字幕拽回底部。
+  let userPinned = $state(false);
+  const PIN_THRESHOLD_PX = 48;
+
+  // Keep the newest row visible (Flickable contentY behavior),
+  // unless the user scrolled up to read history.
   $effect(() => {
+    const count = core.subtitles.length;
     void core.subtitles;
     void maxLines;
     void fontSize;
     tick().then(() => {
-      if (viewport) viewport.scrollTop = viewport.scrollHeight;
+      if (!viewport) return;
+      // 历史被清空或内容不再溢出时，没有可回看的内容（也可能不会触发
+      // scroll 事件），解除固定，避免下一场会话卡在顶部不跟随。
+      const maxScroll = viewport.scrollHeight - viewport.clientHeight;
+      if (count === 0 || maxScroll <= 1) userPinned = false;
+      if (!userPinned) viewport.scrollTop = viewport.scrollHeight;
     });
   });
+
+  function onViewportScroll() {
+    if (!viewport) return;
+    const maxScroll = viewport.scrollHeight - viewport.clientHeight;
+    const distFromBottom = maxScroll - viewport.scrollTop;
+    // 溢出很浅（<= 2 * 阈值）时按比例缩小容差，保证滚到顶部一定能进入固定状态。
+    const threshold = Math.min(PIN_THRESHOLD_PX, maxScroll / 2);
+    userPinned = maxScroll > 1 && distFromBottom > threshold;
+  }
+
+  function jumpToLatest() {
+    userPinned = false;
+    tick().then(() => {
+      if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    });
+  }
 
   // Resize the native window to content: min(content + 32, 0.6 * availHeight).
   onMount(() => {
@@ -84,7 +111,8 @@
 
   function onMouseDown(event: MouseEvent) {
     if (event.button !== 0) return;
-    if ((event.target as HTMLElement).closest(".toolbar")) return;
+    // 按钮区域不触发窗口拖动，否则 startDragging 会吞掉按钮的 click。
+    if ((event.target as HTMLElement).closest(".toolbar, .jump-latest")) return;
     void win?.startDragging();
   }
 
@@ -109,7 +137,7 @@
     style:width="{width}px"
     style:background={alpha > 0 ? `rgba(6 8 12 / ${alpha})` : "transparent"}
   >
-    <div class="viewport" bind:this={viewport}>
+    <div class="viewport" bind:this={viewport} onscroll={onViewportScroll}>
       <div class="lines" bind:this={lines}>
         {#each rows as row (row.id)}
           <SubtitleEntry
@@ -125,6 +153,9 @@
         {/if}
       </div>
     </div>
+    {#if userPinned}
+      <button class="jump-latest" onclick={jumpToLatest}>↓ 回到最新</button>
+    {/if}
     <div class="toolbar">
       <button class="tool" onclick={() => void showControlCenter()}>
         控制中心
@@ -223,6 +254,25 @@
   .tool:hover {
     background: rgb(40 48 64 / 0.95);
     border-color: rgb(255 255 255 / 0.25);
+    color: #fff;
+  }
+  .jump-latest {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: var(--lt-radius-sm);
+    background: rgb(20 25 35 / 0.9);
+    color: #dce5f2;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .jump-latest:hover {
+    background: rgb(40 48 64 / 0.95);
     color: #fff;
   }
 </style>

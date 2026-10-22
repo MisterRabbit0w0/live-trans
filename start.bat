@@ -1,7 +1,9 @@
 @echo off
-rem LiveTrans 开发入口：以 tauri dev 启动（Vite 前端 + debug 壳 + .venv 核心）。
-rem 发行产物入口：安装版开始菜单/桌面快捷方式，或便携 ZIP 中的 livetrans.exe
-rem （由 scripts\build_windows.py 产出，不要直接运行 target\ 下的构建残留）。
+rem LiveTrans dev entry: runs `tauri dev` (Vite frontend + debug shell + .venv core).
+rem Release entry is the installed shortcut or livetrans.exe from the portable ZIP
+rem (built by scripts\build_windows.py); do not run leftovers under target\.
+rem Keep this file ASCII-only: cmd parses .bat with the OEM code page (e.g. GBK),
+rem so UTF-8 comments get split into bogus commands.
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" goto no_venv
