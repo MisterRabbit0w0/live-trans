@@ -4,7 +4,7 @@
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。条目由
 release-please 根据 Conventional Commits 自动汇总，勿手工编辑已发布段落。
 
-## [0.2.1](https://github.com/MisterRabbit0w0/live-trans/compare/v0.2.0...v0.2.1) (2026-10-22)
+## [0.2.0](https://github.com/MisterRabbit0w0/live-trans/compare/v0.1.0...v0.2.0) (2026-10-22)
 
 
 ### Features
@@ -43,8 +43,6 @@ release-please 根据 Conventional Commits 自动汇总，勿手工编辑已发�
 
 * 发行链与验收文档对齐 NSIS 现实，CHANGELOG 记录 0.2.0 ([731f059](https://github.com/MisterRabbit0w0/live-trans/commit/731f0593d01d00c242f137d55f7ca984795b1889))
 * 更新 README 为 Tauri 架构、解耦流水线与 Mermaid 架构图 ([622b130](https://github.com/MisterRabbit0w0/live-trans/commit/622b13000b93243ce6955e0878a4f7b66b905dca))
-
-## [0.2.0] - 2026-10-10
 
 ### 修复
 
