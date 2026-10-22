@@ -3,44 +3,73 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build (for example v0.2.0)
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   version:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - run: python scripts/release_artifacts.py --validate-tag
+      - name: Validate tag and resolve source commit
+        id: version
+        run: |
+          GITHUB_REF="refs/tags/$RELEASE_TAG" python scripts/release_artifacts.py --validate-tag
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   checks:
     needs: version
     uses: ./.github/workflows/lint.yml
+    with:
+      ref: ${{ needs.version.outputs.sha }}
 
   windows:
-    needs: checks
+    needs: [version, checks]
     uses: ./.github/workflows/windows.yml
+    with:
+      ref: ${{ needs.version.outputs.sha }}
 
   publish:
-    needs: [checks, windows]
+    needs: [version, checks, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.version.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -51,12 +80,14 @@ jobs:
           merge-multiple: true
           path: release
       - name: Verify artifact set, build revision and checksums
-        run: python scripts/release_artifacts.py --directory release
-      - name: Create draft for manual Windows acceptance
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          files: release/*
-          fail_on_unmatched_files: true
-          overwrite_files: false
-          generate_release_notes: true
-          draft: true
+        run: GITHUB_REF="refs/tags/$RELEASE_TAG" python scripts/release_artifacts.py --directory release
+      - name: Attach verified assets without changing an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft \
+              --title "$RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release/*
