@@ -73,7 +73,7 @@ class FakeTranslator:
         self.text = text
         self.entered = threading.Event()
 
-    def translate(self, text, source_language=""):
+    def translate(self, text, source_language="", history=None):
         self.entered.set()
         if self.gate is not None:
             self.gate.wait(10)
